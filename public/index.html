@@ -484,6 +484,15 @@
   .pipeline{display:flex; flex-wrap:wrap; align-items:center; gap:6px; font-size:11.5px; color:var(--muted); margin:12px 0;}
   .pipeline .step{background:#0a1120; border:1px solid var(--card-border); padding:7px 11px; border-radius:8px;}
   .pipeline .arrow{color:var(--card-border);}
+  /* ===== Mode intégration (iframe / widget sur un site tiers) ===== */
+  body.embed-mode header, body.embed-mode .sidebar, body.embed-mode .bottom-nav,
+  body.embed-mode .side-menu, body.embed-mode #menuOverlay, body.embed-mode .demo-banner{ display:none !important; }
+  body.embed-mode main{ padding:0 !important; max-width:none !important; }
+  body.embed-mode #view-accueil > section:not(.grid3){ display:none !important; }
+  body.embed-mode #view-accueil > section.grid3{ grid-template-columns:1fr !important; padding:12px !important; }
+  body.embed-mode #view-accueil > section.grid3 > .card:not(:first-child){ display:none !important; }
+  body.embed-mode #view-accueil > section.grid3 > .card:first-child{ margin:0 !important; }
+  body.embed-mode #embedBtn{ display:none !important; } /* pas d'intégration en cascade dans une intégration */
 </style>
 </head>
 <body class="splashing">
@@ -517,6 +526,21 @@
   <a onclick="go('profil'); closeMenu();">⚙️ Paramètres</a>
   <a onclick="go('tarifs'); closeMenu();">💳 Tarifs</a>
 </aside>
+
+<div class="modal-overlay" id="embedOverlay" onclick="if(event.target===this) closeEmbedModal();">
+  <div class="modal">
+    <div class="modal-head"><h2>🔗 Intégrer ce sondage</h2><button class="close-x" onclick="closeEmbedModal()">✕</button></div>
+    <div class="scope-tabs" style="margin-bottom:16px;">
+      <button class="active" id="embedTabIframe" onclick="setEmbedTab('iframe')">Iframe</button>
+      <button id="embedTabWidget" onclick="setEmbedTab('widget')">Widget JS</button>
+      <button id="embedTabLink" onclick="setEmbedTab('link')">Lien direct</button>
+    </div>
+    <p style="font-size:12px; color:var(--muted); margin-bottom:8px;" id="embedDesc"></p>
+    <textarea id="embedCode" readonly rows="5" style="width:100%; background:#0a1120; border:1px solid var(--card-border); border-radius:10px; color:var(--text); font-family:monospace; font-size:11.5px; padding:10px; resize:vertical;"></textarea>
+    <button class="btn btn-green" style="width:100%; margin-top:12px;" onclick="copyEmbedCode()">📋 Copier</button>
+    <p style="font-size:11px; color:var(--muted); margin-top:12px; text-align:center;">Ce code fonctionne réellement une fois collé sur n'importe quel site (WordPress, Wix, HTML, etc.) — il affiche ce sondage en direct et se met à jour avec les vrais votes.</p>
+  </div>
+</div>
 
 <div class="modal-overlay" id="authOverlay" onclick="if(event.target===this) closeAuthModal();">
   <div class="modal">
@@ -798,6 +822,7 @@
             <div style="display:flex; gap:10px; align-items:center;">
               <button class="share-link" onclick="openTvMode()">📺 Mode TV</button>
               <button class="share-link" onclick="sharePoll()">↗ Partager</button>
+              <button class="share-link" id="embedBtn" style="display:none;" onclick="openEmbedModal()">🔗 Intégrer</button>
             </div>
           </div>
           <div class="id-line" id="poll-id">ID : VXL-7F3K2</div>
@@ -1206,6 +1231,54 @@ const API_BASE = 'https://voxlive-backend.onrender.com';
 let authToken = localStorage.getItem('voxlive_token') || null;
 let currentUser = JSON.parse(localStorage.getItem('voxlive_user') || 'null');
 
+/* =========================================================
+   MODE INTÉGRATION — iframe / widget sur un site tiers
+   ========================================================= */
+let embedMode = false;
+let embedPollCode = null;
+(function detectEmbedMode(){
+  const path = location.pathname || '';
+  const params = new URLSearchParams(location.search);
+  const m = path.match(/\/embed\/([^\/?#]+)/);
+  if(m){ embedMode = true; embedPollCode = decodeURIComponent(m[1]); }
+  else if(params.get('embed') === '1'){ embedMode = true; embedPollCode = params.get('poll'); }
+  if(embedMode) document.body.classList.add('embed-mode');
+})();
+
+function openEmbedModal(){
+  const p = featured();
+  if(!p.remote){ toast('Seul un sondage réel peut être intégré.'); return; }
+  document.getElementById('embedOverlay').classList.add('open');
+  setEmbedTab('iframe');
+}
+function closeEmbedModal(){ document.getElementById('embedOverlay').classList.remove('open'); }
+function setEmbedTab(tab){
+  document.getElementById('embedTabIframe').classList.toggle('active', tab==='iframe');
+  document.getElementById('embedTabWidget').classList.toggle('active', tab==='widget');
+  document.getElementById('embedTabLink').classList.toggle('active', tab==='link');
+  const p = featured();
+  const origin = (location.origin && location.origin !== 'null') ? location.origin : 'https://voxlive-backend.onrender.com';
+  const embedUrl = `${origin}/embed/${encodeURIComponent(p.code)}`;
+  const descEl = document.getElementById('embedDesc');
+  const codeEl = document.getElementById('embedCode');
+  if(tab === 'iframe'){
+    descEl.textContent = 'Colle ce code directement dans une page HTML, WordPress (bloc HTML personnalisé), Wix, etc.';
+    codeEl.value = `<iframe src="${embedUrl}" width="100%" height="560" style="border:0; border-radius:16px; max-width:480px;" loading="lazy"></iframe>`;
+  } else if(tab === 'widget'){
+    descEl.textContent = 'Alternative au iframe direct : un petit script qui insère le sondage dans un conteneur de ton choix.';
+    codeEl.value = `<div id="voxlive-poll-${p.code}"></div>\n<script src="${origin}/widget.js"><\/script>\n<script>\n  VoxLive.render({ poll: "${p.code}", container: "#voxlive-poll-${p.code}" });\n<\/script>`;
+  } else {
+    descEl.textContent = 'Lien direct à partager (WhatsApp, SMS, e-mail...) — ouvre le sondage en mode plein écran.';
+    codeEl.value = pollPublicUrl(p, true);
+  }
+}
+function copyEmbedCode(){
+  const codeEl = document.getElementById('embedCode');
+  codeEl.select();
+  if(navigator.clipboard) navigator.clipboard.writeText(codeEl.value).then(()=>toast('Code copié !'));
+  else toast('Sélectionne et copie manuellement le code.');
+}
+
 function apiPollToLocal(ap){
   return {
     id: ap.id, code: ap.code, title: ap.title, cat: ap.category, scope: ap.scope,
@@ -1229,6 +1302,24 @@ function loadRemotePolls(){
       const remote = data.polls.map(apiPollToLocal);
       polls = [...remote, ...polls];
       if(remote.length && !findPoll(featuredId)?.remote) featuredId = remote[0].id;
+
+      if(embedMode && embedPollCode){
+        const embedMatch = remote.find(x => x.code === embedPollCode);
+        if(embedMatch) featuredId = embedMatch.id;
+      }
+
+      // Ouverture directe d'un sondage précis via lien partagé (?poll=CODE) — ex. affiché sur un plateau TV
+      const params = new URLSearchParams(location.search);
+      const wantedCode = params.get('poll');
+      if(wantedCode){
+        const match = remote.find(x => x.code === wantedCode);
+        if(match){
+          featuredId = match.id;
+          if(params.get('tv') === '1'){ go('accueil'); openTvMode(); }
+        } else {
+          toast('Sondage introuvable (code "' + wantedCode + '").');
+        }
+      }
       if(banner) banner.innerHTML = currentUser
         ? `✅ Connecté à VoxLive — ${remote.length} sondage(s) réel(s) chargé(s). Les autres cartes restent des démonstrations locales clairement identifiables.`
         : `✅ Serveur VoxLive joignable — ${remote.length} sondage(s) réel(s) chargé(s). <a onclick="openAuthModal()" style="color:var(--green); text-decoration:underline; cursor:pointer;">Connecte-toi</a> pour en créer ou voter.`;
@@ -1655,6 +1746,9 @@ function voteOn(id, choice){
       votedPolls[id] = choice;
       addActivity(choice, true);
       toast('Vote enregistré — c\'est réel !');
+      if(window.parent !== window){
+        window.parent.postMessage({type:'voxlive:vote', poll:updated.code, choice, pour:updated.pour, contre:updated.contre}, '*');
+      }
       renderAll();
     })
     .catch(err => toast('⚠️ ' + err.message));
@@ -1679,14 +1773,27 @@ function selectPoll(id){
 }
 
 /* ---------- PARTAGE ---------- */
+/* ---------- Lien public réel d'un sondage (fonctionne vraiment une fois en ligne) ---------- */
+function pollPublicUrl(p, tv){
+  const origin = (typeof location !== 'undefined' && location.origin && location.origin !== 'null')
+    ? location.origin : 'https://voxlive-backend.onrender.com';
+  if(p.remote){
+    return `${origin}/?poll=${encodeURIComponent(p.code)}${tv ? '&tv=1' : ''}`;
+  }
+  return `${origin}/`; // sondage de démo (local) : pas d'URL individuelle réelle, on renvoie à l'accueil
+}
+
 function sharePoll(){
   const p = featured();
   shareCount++;
-  const text = `VoxLive — ${p.title} (${p.code})`;
+  const url = pollPublicUrl(p, false);
+  const text = p.remote
+    ? `VoxLive — ${p.title} (${p.code}) : ${url}`
+    : `VoxLive — ${p.title} (${p.code}) — sondage de démonstration, non partageable réellement.`;
   if(navigator.share){
-    navigator.share({title:'VoxLive', text}).catch(()=>{});
+    navigator.share({title:'VoxLive', text, url: p.remote ? url : undefined}).catch(()=>{});
   } else if(navigator.clipboard){
-    navigator.clipboard.writeText(text).then(()=>toast('Lien du sondage copié !'));
+    navigator.clipboard.writeText(text).then(()=>toast(p.remote ? 'Lien réel du sondage copié !' : 'Texte copié (sondage de démonstration, lien non réel).'));
   } else {
     toast(text);
   }
@@ -1713,7 +1820,7 @@ function renderTvMode(){
   document.getElementById('tv-pct-contre').textContent = cp+'%';
   document.getElementById('tv-total').textContent = fmt(total(p));
   document.getElementById('tv-code').textContent = p.code;
-  const shareUrl = `https://voxlive.africa/poll/${p.code}`; // illustratif — deviendra un vrai lien une fois le backend en ligne
+  const shareUrl = pollPublicUrl(p, true); // lien réel — scanner ce QR ouvre CE sondage précis en mode TV, pour de vrai
   document.getElementById('tv-qr').src = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&bgcolor=ffffff&data=${encodeURIComponent(shareUrl)}`;
 }
 document.addEventListener('keydown', (e)=>{ if(e.key === 'Escape') closeTvMode(); });
@@ -1814,7 +1921,7 @@ function renderEvents(){
   const el = document.getElementById('events-grid');
   document.getElementById('events-empty').style.display = events.length ? 'none' : 'block';
   el.innerHTML = events.map(ev=>{
-    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&bgcolor=ffffff&data=${encodeURIComponent('https://voxlive.africa/event/'+ev.code)}`;
+    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&bgcolor=ffffff&data=${encodeURIComponent(location.origin + '/?event=' + ev.code)}`;
     return `<div class="event-card">
       <img class="event-qr" src="${qrUrl}" alt="QR ${ev.code}">
       <div style="font-weight:700;font-size:14px;">${ev.name}</div>
@@ -2115,6 +2222,11 @@ function renderFeatured(){
   document.getElementById('phone-question').textContent = p.title;
   document.getElementById('card-question').textContent = p.title;
   document.getElementById('poll-id').textContent = 'ID : ' + p.code;
+  const embedBtn = document.getElementById('embedBtn');
+  if(embedBtn) embedBtn.style.display = (p.remote && !embedMode) ? 'inline-flex' : 'none';
+  if(embedMode && window.parent !== window){
+    window.parent.postMessage({type:'voxlive:poll_loaded', poll:p.code, pour:p.pour, contre:p.contre}, '*');
+  }
   const authBox = document.getElementById('featured-author');
   if(p.remote && p.author?.name){
     authBox.style.display = 'flex';
