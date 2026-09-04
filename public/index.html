@@ -810,7 +810,7 @@
           <div class="voted-flag" id="phone-voted-flag">✓ Vote enregistré — merci !</div>
           <div class="vcount">Déjà <b id="phone-total">128 542</b> votes</div>
           <div style="display:flex;align-items:center;">
-            <div class="avatars"><div class="av"></div><div class="av"></div><div class="av"></div><div class="av"></div><div class="av"></div><span class="more">+128K</span></div>
+            <div class="avatars"><div class="av"></div><div class="av"></div><div class="av"></div><div class="av"></div><div class="av"></div><span class="more" id="phone-more">+128K</span></div>
           </div>
         </div>
       </section>
@@ -2244,6 +2244,7 @@ function renderFeatured(){
   document.getElementById('donut-total').textContent = fmt(total(p));
   document.getElementById('total-voters').textContent = fmt(total(p));
   document.getElementById('phone-total').textContent = fmt(total(p));
+  document.getElementById('phone-more').textContent = p.remote ? ('+' + fmt(Math.max(0, total(p)-5))) : '+128K';
   document.getElementById('pour-live-pct').textContent = Math.round(pp)+'%';
   document.getElementById('contre-live-pct').textContent = Math.round(cp)+'%';
   document.getElementById('trend-lead').textContent = (pp>=cp ? 'POUR en tête ↗' : 'CONTRE en tête ↗');
