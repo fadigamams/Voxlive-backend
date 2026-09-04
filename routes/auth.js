@@ -105,4 +105,26 @@ router.get('/me', requireAuth, async (req, res) => {
   }
 });
 
+router.patch('/me/logo', requireAuth, async (req, res) => {
+  try {
+    const { logo_data_url } = req.body || {};
+    if (!logo_data_url || !/^data:image\/(png|jpe?g|webp|gif|svg\+xml);base64,/.test(logo_data_url)) {
+      return res.status(400).json({ error: 'Logo invalide — image PNG/JPG/WebP/GIF/SVG requise.' });
+    }
+    if (logo_data_url.length > 1_400_000) {
+      return res.status(400).json({ error: 'Logo trop volumineux (1 Mo maximum).' });
+    }
+
+    const { rows } = await pool.query(
+      `UPDATE users SET logo_url = $1 WHERE id = $2
+       RETURNING id, name, email, phone, role, logo_url, vox_score, verified, created_at`,
+      [logo_data_url, req.user.sub]
+    );
+    res.json({ user: rows[0] });
+  } catch (err) {
+    console.error('Erreur PATCH /me/logo :', err);
+    res.status(500).json({ error: 'Erreur serveur, réessaie plus tard.' });
+  }
+});
+
 module.exports = router;
