@@ -4,6 +4,7 @@ const cors = require('cors');
 const rateLimit = require('express-rate-limit');
 
 const authRoutes = require('./routes/auth');
+const pollsRoutes = require('./routes/polls');
 
 const app = express();
 
@@ -18,7 +19,16 @@ const authLimiter = rateLimit({
   message: { error: 'Trop de tentatives, réessaie dans quelques minutes.' },
 });
 
+const pollsLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Trop de requêtes, ralentis un peu.' },
+});
+
 app.use('/api/auth', authLimiter, authRoutes);
+app.use('/api/polls', pollsLimiter, pollsRoutes);
 
 app.get('/api/health', (req, res) => res.json({ ok: true }));
 
