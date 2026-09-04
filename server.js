@@ -32,5 +32,7 @@ app.use('/api/polls', pollsLimiter, pollsRoutes);
 
 app.get('/api/health', (req, res) => res.json({ ok: true }));
 
+app.use(express.static('public'));
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`VoxLive API en écoute sur le port ${PORT}`));
