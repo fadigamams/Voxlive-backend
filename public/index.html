@@ -996,6 +996,7 @@
           Mode démonstration — sans connexion. Les votes de cette session sont enregistrés uniquement dans ce navigateur
           (aucune donnée personnelle collectée). Connectez un compte pour synchroniser vos sondages et votes entre appareils.
         </p>
+        <button class="vote-btn" style="margin-top:10px;background:#334155;" onclick="showMyToken()">🔑 Afficher mon token (debug)</button>
       </section>
 
       <section class="card">
@@ -1866,6 +1867,22 @@ let verifiedUser = false;
 function requestVerification(){
   toast('Demande envoyée — un badge ✓ Vérifié apparaîtra après validation par notre équipe (sous 48h).');
 }
+function showMyToken(){
+  if(!authToken){
+    alert('Tu n\'es pas connecté — aucun token disponible.');
+    return;
+  }
+  if(navigator.clipboard){
+    navigator.clipboard.writeText(authToken).then(()=>{
+      alert('Token copié dans le presse-papier :\n\n' + authToken);
+    }).catch(()=>{
+      alert('Ton token :\n\n' + authToken);
+    });
+  } else {
+    alert('Ton token :\n\n' + authToken);
+  }
+}
+
 function renderDashboard(){
   const mine = polls.filter(p=>p.createdByUser && p.hasPoll);
   const votesRecus = mine.reduce((s,p)=>s+total(p), 0);
