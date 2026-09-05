@@ -133,6 +133,29 @@ router.post('/:id/vote', requireAuth, async (req, res) => {
   }
 });
 
+router.get('/:id/voters', requireAuth, async (req, res) => {
+  try {
+    const pollCheck = await pool.query('SELECT user_id FROM polls WHERE id = $1', [req.params.id]);
+    if (!pollCheck.rows[0]) return res.status(404).json({ error: 'Sondage introuvable.' });
+    if (pollCheck.rows[0].user_id !== req.user.sub) {
+      return res.status(403).json({ error: "Tu n'es pas l'auteur de ce sondage." });
+    }
+
+    const { rows } = await pool.query(
+      `SELECT u.name, u.role, v.choice, v.created_at
+       FROM votes v
+       JOIN users u ON u.id = v.user_id
+       WHERE v.poll_id = $1
+       ORDER BY v.created_at DESC`,
+      [req.params.id]
+    );
+    res.json({ voters: rows });
+  } catch (err) {
+    console.error('Erreur GET /polls/:id/voters :', err);
+    res.status(500).json({ error: 'Erreur serveur, réessaie plus tard.' });
+  }
+});
+
 router.post('/:id/close', requireAuth, async (req, res) => {
   try {
     const { rows } = await pool.query('SELECT user_id FROM polls WHERE id = $1', [req.params.id]);
