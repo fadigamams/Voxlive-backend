@@ -501,6 +501,7 @@
 <div class="menu-overlay" id="menuOverlay" onclick="closeMenu()"></div>
 <aside class="side-menu" id="sideMenu">
   <button class="close-x" onclick="closeMenu()">✕</button>
+  <a id="sideMenuAuth" onclick="(currentUser ? go('profil') : openAuthModal()); closeMenu();" style="font-weight:700; color:var(--green);">🔐 Connexion / Mon compte</a>
   <a data-nav="accueil" class="active" onclick="go('accueil'); closeMenu();">🏠 Accueil</a>
   <a onclick="go('tendances'); closeMenu();">🔥 Tendances en direct</a>
   <a onclick="go('afrique'); closeMenu();">🌍 VoxLive Africa</a>
@@ -516,6 +517,58 @@
   <a onclick="go('profil'); closeMenu();">⚙️ Paramètres</a>
   <a onclick="go('tarifs'); closeMenu();">💳 Tarifs</a>
 </aside>
+
+<div class="modal-overlay" id="authOverlay" onclick="if(event.target===this) closeAuthModal();">
+  <div class="modal">
+    <div class="modal-head"><h2>Mon compte VoxLive</h2><button class="close-x" onclick="closeAuthModal()">✕</button></div>
+
+    <div class="scope-tabs" style="margin-bottom:16px;">
+      <button class="active" id="authTabLogin" onclick="setAuthTab('login')">Connexion</button>
+      <button id="authTabRegister" onclick="setAuthTab('register')">Créer un compte</button>
+    </div>
+
+    <form id="authFormLogin" onsubmit="return submitLogin(event)">
+      <div class="field">
+        <label>Email ou téléphone</label>
+        <input type="text" id="auth-login-identifier" placeholder="ex: toi@exemple.com">
+      </div>
+      <div class="field">
+        <label>Mot de passe</label>
+        <input type="password" id="auth-login-password" placeholder="••••••••">
+      </div>
+      <button type="submit" class="btn btn-green" style="width:100%;">Se connecter</button>
+    </form>
+
+    <form id="authFormRegister" onsubmit="return submitRegister(event)" style="display:none;">
+      <div class="field">
+        <label>Nom du compte</label>
+        <input type="text" id="auth-reg-name" placeholder="Ex : Fadiga, RTI, Studio Kôrô...">
+      </div>
+      <div class="field">
+        <label>Email</label>
+        <input type="email" id="auth-reg-email" placeholder="ex: toi@exemple.com">
+      </div>
+      <div class="field">
+        <label>Mot de passe (6 caractères min.)</label>
+        <input type="password" id="auth-reg-password" placeholder="••••••••">
+      </div>
+      <div class="field">
+        <label>Type de compte</label>
+        <select id="auth-reg-role">
+          <option value="particulier">👤 Particulier</option>
+          <option value="influenceur">⭐ Influenceur</option>
+          <option value="tv">📺 Chaîne TV</option>
+          <option value="entreprise">🏢 Entreprise</option>
+        </select>
+      </div>
+      <button type="submit" class="btn btn-green" style="width:100%;">Créer mon compte</button>
+    </form>
+
+    <p style="font-size:11px; color:var(--muted); margin-top:12px; text-align:center;">
+      Un compte VoxLive te permet de créer des sondages réels et de voter — partagés avec tous les utilisateurs, pas seulement sur cet appareil.
+    </p>
+  </div>
+</div>
 
 <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this) closeModal();">
   <div class="modal">
@@ -541,7 +594,19 @@
       </div>
       <div class="field">
         <label>Nom du compte</label>
-        <input type="text" id="in-author-name" placeholder="Ex : Fadiga, RTI, Studio Kôrô...">
+        <input type="text" id="in-author-name" placeholder="Ex : Fadiga, RTI, Studio Kôrô..." oninput="checkSavedLogo()">
+      </div>
+      <div class="field" id="f-author-logo">
+        <label>Logo du compte (optionnel)</label>
+        <input type="file" id="in-author-logo" accept="image/*" onchange="onLogoFileChange(event)">
+        <div style="display:flex; align-items:center; gap:10px; margin-top:8px;">
+          <img id="logo-preview-img" style="width:44px; height:44px; border-radius:50%; object-fit:cover; display:none; border:1px solid var(--card-border);">
+          <span id="logo-preview-empty" style="font-size:11px; color:var(--muted);">Sans logo, une pastille générique sera utilisée.</span>
+          <button type="button" class="qc-btn" id="logo-remove-btn" style="display:none; padding:6px 10px; font-size:11px;" onclick="removeLogo()">Retirer</button>
+        </div>
+      </div>
+      <div id="permanentLogoNote" style="display:none; font-size:11.5px; color:var(--green); background:rgba(34,197,94,0.08); border:1px solid rgba(34,197,94,0.3); border-radius:8px; padding:10px; margin-bottom:14px;">
+        ✅ Le logo permanent de ton compte (défini dans « Profil → Mon compte ») sera automatiquement affiché sur ce sondage — inutile de le re-uploader ici.
       </div>
 
       <!-- ===== Champs SONDAGE ===== -->
@@ -578,6 +643,7 @@
           <label id="lbl-media">Choisir une photo</label>
           <input type="file" id="in-media-file" accept="image/*" onchange="onMediaFileChange(event)">
           <div class="field-err">Ajoutez un fichier.</div>
+          <div style="font-size:11px; color:var(--muted); margin-top:6px; line-height:1.5;">⚠️ Le stockage permanent des photos/vidéos n'est pas encore branché au serveur — ce contenu reste visible uniquement dans cette session de navigation et disparaît si vous rechargez la page. Seuls les <b>sondages</b> et le <b>logo de compte</b> sont déjà réels et permanents.</div>
         </div>
         <div id="media-preview" style="margin:6px 0 14px; display:none;">
           <img id="media-preview-img" style="max-width:100%; border-radius:10px; display:none;">
@@ -656,12 +722,12 @@
   </nav>
   <div class="header-actions">
     <button class="btn btn-green" onclick="openModal()">Créer un sondage</button>
-    <button class="btn btn-outline" onclick="toast('La connexion sera disponible avec le backend.')">Connexion</button>
+    <button class="btn btn-outline" id="authBtn" onclick="openAuthModal()">Connexion</button>
     <button class="burger" onclick="openMenu()">☰</button>
   </div>
 </header>
 
-<div class="demo-banner">🧪 MODE DÉMONSTRATION — données simulées localement, aucun vote réel n'est comptabilisé ni partagé entre utilisateurs.</div>
+<div class="demo-banner" id="demoBanner">🧪 MODE DÉMONSTRATION — données simulées localement, aucun vote réel n'est comptabilisé ni partagé entre utilisateurs.</div>
 
 <div class="layout">
   <aside class="sidebar">
@@ -720,7 +786,7 @@
           <div class="voted-flag" id="phone-voted-flag">✓ Vote enregistré — merci !</div>
           <div class="vcount">Déjà <b id="phone-total">128 542</b> votes</div>
           <div style="display:flex;align-items:center;">
-            <div class="avatars"><div class="av"></div><div class="av"></div><div class="av"></div><div class="av"></div><div class="av"></div><span class="more">+128K</span></div>
+            <div class="avatars"><div class="av"></div><div class="av"></div><div class="av"></div><div class="av"></div><div class="av"></div><span class="more" id="phone-more">+128K</span></div>
           </div>
         </div>
       </section>
@@ -735,6 +801,10 @@
             </div>
           </div>
           <div class="id-line" id="poll-id">ID : VXL-7F3K2</div>
+          <div id="featured-author" style="display:none; align-items:center; gap:8px; margin-bottom:6px;">
+            <img id="featured-author-logo" style="width:24px; height:24px; border-radius:50%; object-fit:cover; display:none;">
+            <span id="featured-author-name" style="font-size:12px; font-weight:700; color:var(--muted);"></span>
+          </div>
           <div class="qtitle" id="card-question">Faut-il renforcer l'entrepreneuriat à l'école ?</div>
           <div class="donut-wrap">
             <div class="donut-side pour">POUR<div class="pct" id="pour-pct-label">63,4%</div><span id="pour-votes-label">81 542 votes</span></div>
@@ -978,6 +1048,19 @@
       </section>
 
       <section class="card">
+        <h3>👤 MON COMPTE</h3>
+        <div id="accountInfoBox" style="font-size:13px; color:var(--muted); line-height:1.7;"></div>
+        <div id="accountLogoBox" style="display:none; align-items:center; gap:10px; margin-top:10px;">
+          <img id="accountLogoPreview" style="width:48px; height:48px; border-radius:50%; object-fit:cover; border:1px solid var(--card-border); display:none;">
+          <div style="flex:1;">
+            <label style="font-size:12px; color:var(--muted); display:block; margin-bottom:4px;">Logo permanent du compte (visible par tous, sur tous vos sondages)</label>
+            <input type="file" id="account-logo-file" accept="image/*" onchange="onAccountLogoChange(event)">
+          </div>
+        </div>
+        <button class="btn btn-outline" style="margin-top:10px;" onclick="currentUser ? logout() : openAuthModal()" id="accountActionBtn">Connexion</button>
+      </section>
+
+      <section class="card">
         <h3>📖 MÉTHODOLOGIE VOXLIVE</h3>
         <p style="font-size:13px;color:var(--muted);line-height:1.7;">
           VoxLive distingue plusieurs types de participation, à ne pas confondre :<br><br>
@@ -1088,12 +1171,219 @@ function fmt(n){ return Math.round(n).toLocaleString('fr-FR'); }
 
 /* ---------- TOAST ---------- */
 let toastTimer;
+/* ---------- Surveillance de lecture vidéo : détecte un blocage (codec non supporté, ex. HEVC) et propose un repli ---------- */
+function voxliveVideoFail(el){
+  if(!el || !el.isConnected) return;
+  const src = el.currentSrc || el.src;
+  const name = el.dataset?.name || 'video';
+  const div = document.createElement('div');
+  div.className = 'media-box live-placeholder';
+  div.style.flexDirection = 'column';
+  div.style.gap = '8px';
+  div.innerHTML = `⚠️ Aperçu vidéo indisponible sur cet appareil (format/codec non supporté par le navigateur).<br>
+    <a href="${src}" download="${name}" style="color:var(--blue); font-weight:700;">📥 Ouvrir / télécharger le fichier</a>`;
+  el.replaceWith(div);
+}
+function voxliveVideoWatchdog(el){
+  const timer = setTimeout(()=>{ if(!el.dataset.ready) voxliveVideoFail(el); }, 4500);
+  el.addEventListener('loadedmetadata', ()=>{ el.dataset.ready='1'; clearTimeout(timer); });
+  el.addEventListener('canplay', ()=>{ el.dataset.ready='1'; clearTimeout(timer); });
+}
+
 function toast(msg){
   const t = document.getElementById('toast');
   t.textContent = msg;
   t.classList.add('show');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(()=>t.classList.remove('show'), 2600);
+}
+
+/* =========================================================
+   VOXLIVE BACKEND — comptes réels + sondages/votes réels
+   (Phase 1 + 2 : auth JWT + polls/votes en PostgreSQL sur Render)
+   ========================================================= */
+const API_BASE = 'https://voxlive-backend.onrender.com';
+let authToken = localStorage.getItem('voxlive_token') || null;
+let currentUser = JSON.parse(localStorage.getItem('voxlive_user') || 'null');
+
+function apiPollToLocal(ap){
+  return {
+    id: ap.id, code: ap.code, title: ap.title, cat: ap.category, scope: ap.scope,
+    pour: Number(ap.pour_count) || 0, contre: Number(ap.contre_count) || 0,
+    createdByUser: !!(currentUser && ap.user_id === currentUser.id),
+    createdAt: ap.created_at ? new Date(ap.created_at).getTime() : Date.now(),
+    hasPoll: true, isMediaPost: false, postType: 'sondage', media: null, caption: '',
+    author: {name: ap.author_name, role: ap.author_role, logo: ap.author_logo || null},
+    remote: true
+  };
+}
+
+function loadRemotePolls(){
+  const banner = document.getElementById('demoBanner');
+  if(banner) banner.textContent = '⏳ Connexion au serveur VoxLive… (peut prendre jusqu\'à 50s si le serveur gratuit vient de s\'endormir)';
+  fetch(API_BASE + '/api/polls')
+    .then(r => r.json())
+    .then(data => {
+      if(!data.polls) throw new Error('réponse invalide');
+      polls = polls.filter(p => !p.remote);
+      const remote = data.polls.map(apiPollToLocal);
+      polls = [...remote, ...polls];
+      if(remote.length && !findPoll(featuredId)?.remote) featuredId = remote[0].id;
+      if(banner) banner.innerHTML = currentUser
+        ? `✅ Connecté à VoxLive — ${remote.length} sondage(s) réel(s) chargé(s). Les autres cartes restent des démonstrations locales clairement identifiables.`
+        : `✅ Serveur VoxLive joignable — ${remote.length} sondage(s) réel(s) chargé(s). <a onclick="openAuthModal()" style="color:var(--green); text-decoration:underline; cursor:pointer;">Connecte-toi</a> pour en créer ou voter.`;
+      renderAll();
+    })
+    .catch(() => {
+      if(banner) banner.textContent = '🧪 MODE DÉMONSTRATION — serveur VoxLive injoignable pour le moment (données simulées localement, non partagées).';
+    });
+}
+
+function createRealPoll(title, question, category, scope){
+  fetch(API_BASE + '/api/polls', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json', 'Authorization':'Bearer ' + authToken},
+    body: JSON.stringify({title, question, category, scope})
+  })
+  .then(async r => {
+    const data = await r.json();
+    if(!r.ok) throw new Error(data.error || 'Erreur lors de la création du sondage.');
+    return data;
+  })
+  .then(data => {
+    const p = apiPollToLocal(data.poll);
+    polls.unshift(p);
+    featuredId = p.id;
+    closeModal();
+    toast('Sondage réel créé et mis en direct !');
+    go('accueil');
+    renderAll();
+  })
+  .catch(err => toast('⚠️ ' + err.message));
+}
+
+function updateAuthUI(){
+  const btn = document.getElementById('authBtn');
+  const sideBtn = document.getElementById('sideMenuAuth');
+  const accBox = document.getElementById('accountInfoBox');
+  const accBtn = document.getElementById('accountActionBtn');
+  const logoBox = document.getElementById('accountLogoBox');
+  const logoPreview = document.getElementById('accountLogoPreview');
+  if(currentUser){
+    if(btn){ btn.textContent = '👤 ' + currentUser.name; btn.onclick = () => go('profil'); }
+    if(sideBtn) sideBtn.textContent = '👤 ' + currentUser.name;
+    if(accBox) accBox.innerHTML = `Connecté en tant que <b style="color:var(--text);">${currentUser.name}</b> (${currentUser.email || currentUser.phone || ''})<br>Rôle : ${currentUser.role} · VoxScore : ${currentUser.vox_score ?? '—'}`;
+    if(accBtn) accBtn.textContent = 'Se déconnecter';
+    if(logoBox) logoBox.style.display = 'flex';
+    if(logoPreview){
+      if(currentUser.logo_url){ logoPreview.src = currentUser.logo_url; logoPreview.style.display = 'block'; }
+      else logoPreview.style.display = 'none';
+    }
+  } else {
+    if(btn){ btn.textContent = 'Connexion'; btn.onclick = openAuthModal; }
+    if(sideBtn) sideBtn.textContent = '🔐 Connexion / Mon compte';
+    if(accBox) accBox.textContent = "Pas encore connecté — crée un compte pour publier des sondages réels et voter.";
+    if(accBtn) accBtn.textContent = 'Connexion';
+    if(logoBox) logoBox.style.display = 'none';
+  }
+}
+
+function openAuthModal(){
+  document.getElementById('authOverlay').classList.add('open');
+  setAuthTab('login');
+}
+function closeAuthModal(){
+  document.getElementById('authOverlay').classList.remove('open');
+  document.querySelectorAll('#authOverlay .field').forEach(f=>f.classList.remove('error'));
+}
+function setAuthTab(tab){
+  document.getElementById('authTabLogin').classList.toggle('active', tab==='login');
+  document.getElementById('authTabRegister').classList.toggle('active', tab==='register');
+  document.getElementById('authFormLogin').style.display = tab==='login' ? 'block' : 'none';
+  document.getElementById('authFormRegister').style.display = tab==='register' ? 'block' : 'none';
+}
+
+async function submitLogin(e){
+  e.preventDefault();
+  const identifier = document.getElementById('auth-login-identifier').value.trim();
+  const password = document.getElementById('auth-login-password').value;
+  if(!identifier || !password){ toast('Renseigne ton email/téléphone et ton mot de passe.'); return false; }
+  try{
+    const r = await fetch(API_BASE + '/api/auth/login', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({identifier, password})
+    });
+    const data = await r.json();
+    if(!r.ok) throw new Error(data.error || 'Connexion refusée.');
+    authToken = data.token; currentUser = data.user;
+    localStorage.setItem('voxlive_token', authToken);
+    localStorage.setItem('voxlive_user', JSON.stringify(currentUser));
+    updateAuthUI();
+    closeAuthModal();
+    toast('Connecté, bienvenue ' + currentUser.name + ' !');
+    loadRemotePolls();
+  }catch(err){ toast('⚠️ ' + err.message); }
+  return false;
+}
+
+async function submitRegister(e){
+  e.preventDefault();
+  const name = document.getElementById('auth-reg-name').value.trim();
+  const email = document.getElementById('auth-reg-email').value.trim();
+  const password = document.getElementById('auth-reg-password').value;
+  const role = document.getElementById('auth-reg-role').value;
+  if(!name || !email || !password){ toast('Nom, email et mot de passe sont requis.'); return false; }
+  try{
+    const r = await fetch(API_BASE + '/api/auth/register', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({name, email, password, role})
+    });
+    const data = await r.json();
+    if(!r.ok) throw new Error(data.error || 'Inscription refusée.');
+    authToken = data.token; currentUser = data.user;
+    localStorage.setItem('voxlive_token', authToken);
+    localStorage.setItem('voxlive_user', JSON.stringify(currentUser));
+    updateAuthUI();
+    closeAuthModal();
+    toast('Compte créé, bienvenue ' + currentUser.name + ' !');
+    loadRemotePolls();
+  }catch(err){ toast('⚠️ ' + err.message); }
+  return false;
+}
+
+function logout(){
+  authToken = null; currentUser = null;
+  localStorage.removeItem('voxlive_token');
+  localStorage.removeItem('voxlive_user');
+  updateAuthUI();
+  toast('Déconnecté.');
+  go('accueil');
+}
+
+/* ---------- Logo permanent du compte (entreprises, chaînes TV, influenceurs) ---------- */
+function onAccountLogoChange(e){
+  const file = e.target.files[0];
+  if(!file || !authToken) return;
+  if(file.size > 1_000_000){ toast('Logo trop volumineux (1 Mo maximum).'); e.target.value=''; return; }
+  const reader = new FileReader();
+  reader.onload = async () => {
+    const dataUrl = reader.result; // base64 — petit fichier, donc adapté au stockage direct en base
+    try{
+      const r = await fetch(API_BASE + '/api/auth/me/logo', {
+        method: 'PATCH',
+        headers: {'Content-Type':'application/json', 'Authorization':'Bearer ' + authToken},
+        body: JSON.stringify({logo_data_url: dataUrl})
+      });
+      const data = await r.json();
+      if(!r.ok) throw new Error(data.error || 'Échec de l\'enregistrement du logo.');
+      currentUser = data.user;
+      localStorage.setItem('voxlive_user', JSON.stringify(currentUser));
+      toast('Logo enregistré — désormais visible sur tous vos sondages, pour tout le monde.');
+      updateAuthUI();
+      loadRemotePolls(); // rafraîchit l'affichage des sondages déjà publiés avec le nouveau logo
+    }catch(err){ toast('⚠️ ' + err.message); }
+  };
+  reader.readAsDataURL(file);
 }
 
 /* ---------- Filet de sécurité : affiche toute erreur JS à l'écran (utile en test sur mobile, sans console) ---------- */
@@ -1126,18 +1416,22 @@ let currentCreateType = 'sondage';
 let pendingMediaSrc = null;
 let pendingMediaKind = null;
 let pendingMediaMime = null;
+let pendingMediaName = null;
 const roleLabel = {particulier:'👤 Particulier', influenceur:'⭐ Influenceur', tv:'📺 Chaîne TV', entreprise:'🏢 Entreprise'};
 
 function openModal(type){
   document.getElementById('modalOverlay').classList.add('open');
   setCreateType(type || 'sondage');
+  removeLogo();
+  checkSavedLogo();
 }
 function closeModal(){
   document.getElementById('modalOverlay').classList.remove('open');
   document.getElementById('createForm').reset();
   document.querySelectorAll('.field').forEach(f=>f.classList.remove('error'));
   if(pendingMediaSrc && pendingMediaSrc.startsWith('blob:')) URL.revokeObjectURL(pendingMediaSrc);
-  pendingMediaSrc = null; pendingMediaKind = null; pendingMediaMime = null;
+  pendingMediaSrc = null; pendingMediaKind = null; pendingMediaMime = null; pendingMediaName = null;
+  removeLogo();
   document.getElementById('media-preview').style.display = 'none';
 }
 function setCreateType(type, ev){
@@ -1150,6 +1444,11 @@ function setCreateType(type, ev){
   document.getElementById('grp-media').style.display = (type==='photo'||type==='video') ? 'block' : 'none';
   document.getElementById('grp-direct').style.display = type==='direct' ? 'block' : 'none';
   document.getElementById('grp-attach-poll').style.display = type==='sondage' ? 'none' : 'block';
+
+  // Si connecté et type sondage réel : le logo permanent du compte prend le relais, plus besoin du champ ci-dessous
+  const realSondage = type==='sondage' && !!authToken;
+  document.getElementById('f-author-logo').style.display = realSondage ? 'none' : 'block';
+  document.getElementById('permanentLogoNote').style.display = realSondage ? 'block' : 'none';
 
   const fileInput = document.getElementById('in-media-file');
   if(type==='photo'){ fileInput.accept='image/*'; document.getElementById('lbl-media').textContent='Choisir une photo'; }
@@ -1176,6 +1475,7 @@ function onMediaFileChange(e){
   pendingMediaSrc = objectUrl;
   pendingMediaKind = kind;
   pendingMediaMime = file.type;
+  pendingMediaName = file.name;
 
   const wrap = document.getElementById('media-preview');
   const img = document.getElementById('media-preview-img');
@@ -1185,9 +1485,46 @@ function onMediaFileChange(e){
     img.src = objectUrl; img.style.display='block'; vid.style.display='none';
   } else {
     vid.src = objectUrl; vid.load(); vid.style.display='block'; img.style.display='none';
-    vid.onerror = () => toast('⚠️ Ce format vidéo ne peut pas être lu par le navigateur.');
+    vid.dataset.name = file.name;
+    vid.onerror = () => voxliveVideoFail(vid);
+    voxliveVideoWatchdog(vid);
   }
 }
+
+/* ---------- Logo de compte (chaînes TV, entreprises, influenceurs...) ---------- */
+let authorLogos = {}; // { "nomDuCompte (minuscule)": blobUrl } — mémoire de session, pas de backend
+let pendingLogoSrc = null;
+function logoKey(name){ return (name||'').trim().toLowerCase(); }
+function onLogoFileChange(e){
+  const file = e.target.files[0];
+  if(!file) return;
+  if(file.size > 4*1024*1024){ toast('Logo trop volumineux (max 4 Mo).'); e.target.value=''; return; }
+  pendingLogoSrc = URL.createObjectURL(file);
+  document.getElementById('logo-preview-img').src = pendingLogoSrc;
+  document.getElementById('logo-preview-img').style.display = 'block';
+  document.getElementById('logo-preview-empty').style.display = 'none';
+  document.getElementById('logo-remove-btn').style.display = 'inline-block';
+}
+function removeLogo(){
+  pendingLogoSrc = null;
+  document.getElementById('in-author-logo').value = '';
+  document.getElementById('logo-preview-img').style.display = 'none';
+  document.getElementById('logo-preview-empty').textContent = 'Sans logo, une pastille générique sera utilisée.';
+  document.getElementById('logo-preview-empty').style.display = 'inline';
+  document.getElementById('logo-remove-btn').style.display = 'none';
+}
+function checkSavedLogo(){
+  const key = logoKey(document.getElementById('in-author-name').value);
+  if(!pendingLogoSrc && key && authorLogos[key]){
+    pendingLogoSrc = authorLogos[key];
+    document.getElementById('logo-preview-img').src = pendingLogoSrc;
+    document.getElementById('logo-preview-img').style.display = 'block';
+    document.getElementById('logo-preview-empty').textContent = 'Logo déjà enregistré pour ce compte.';
+    document.getElementById('logo-preview-empty').style.display = 'inline';
+    document.getElementById('logo-remove-btn').style.display = 'inline-block';
+  }
+}
+
 function normalizeEmbed(url){
   if(!url) return null;
   url = url.trim();
@@ -1231,6 +1568,10 @@ function submitPostInner(){
     }
     cat = document.getElementById('in-cat').value;
     scope = document.getElementById('in-scope').value;
+    if(authToken){
+      createRealPoll(title, question, cat, scope);
+      return false; // la suite (fermeture, toast, navigation) est gérée dans createRealPoll()
+    }
   } else if(type === 'photo' || type === 'video'){
     if(!pendingMediaSrc){
       document.getElementById('f-media').classList.add('error');
@@ -1238,12 +1579,12 @@ function submitPostInner(){
       document.getElementById('f-media').scrollIntoView({behavior:'smooth', block:'center'});
       return false;
     }
-    media = {kind: pendingMediaKind, src: pendingMediaSrc, mime: pendingMediaMime};
+    media = {kind: pendingMediaKind, src: pendingMediaSrc, mime: pendingMediaMime, name: pendingMediaName};
     caption = document.getElementById('in-media-caption').value.trim();
     question = caption || (type==='photo' ? `Photo publiée par ${authorName}` : `Vidéo publiée par ${authorName}`);
     title = question;
     cat = 'Média'; scope = 'nationale';
-    pendingMediaSrc = null; pendingMediaKind = null; pendingMediaMime = null; // évite que closeModal() ne révoque l'URL blob utilisée par ce post
+    pendingMediaSrc = null; pendingMediaKind = null; pendingMediaMime = null; pendingMediaName = null; // évite que closeModal() ne révoque l'URL blob utilisée par ce post
   } else if(type === 'direct'){
     title = document.getElementById('in-live-title').value.trim();
     document.getElementById('f-live-title').classList.toggle('error', !title);
@@ -1268,7 +1609,8 @@ function submitPostInner(){
   p.postType = type;
   p.media = media;
   p.caption = caption;
-  p.author = {name: authorName, role: authorRole};
+  if(pendingLogoSrc && authorName !== 'Anonyme') authorLogos[logoKey(authorName)] = pendingLogoSrc;
+  p.author = {name: authorName, role: authorRole, logo: authorLogos[logoKey(authorName)] || null};
   polls.unshift(p);
 
   if(hasPoll) featuredId = id;
@@ -1288,6 +1630,38 @@ function submitPostInner(){
 function voteOn(id, choice){
   const p = findPoll(id);
   if(!p) return;
+
+  if(p.remote){
+    // Sondage réel (backend) : vote réel, protégé par la base de données.
+    if(!authToken){
+      toast('Connecte-toi pour voter sur ce sondage réel.');
+      openAuthModal();
+      return;
+    }
+    fetch(API_BASE + '/api/polls/' + id + '/vote', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json', 'Authorization':'Bearer ' + authToken},
+      body: JSON.stringify({choice})
+    })
+    .then(async r => {
+      const data = await r.json();
+      if(!r.ok) throw new Error(data.error || 'Erreur lors du vote.');
+      return data;
+    })
+    .then(data => {
+      const updated = apiPollToLocal(data.poll);
+      const idx = polls.findIndex(x => x.id === id);
+      if(idx !== -1) polls[idx] = updated;
+      votedPolls[id] = choice;
+      addActivity(choice, true);
+      toast('Vote enregistré — c\'est réel !');
+      renderAll();
+    })
+    .catch(err => toast('⚠️ ' + err.message));
+    return;
+  }
+
+  // Sondage de démonstration (local, non partagé)
   if(votedPolls[p.id]){ toast('Vous avez déjà voté sur ce sondage.'); return; }
   if(choice==='pour') p.pour++; else p.contre++;
   votedPolls[p.id] = choice;
@@ -1631,7 +2005,7 @@ function renderMediaFeed(elId, limit){
     const typeTag = {photo:'🖼️ Photo', video:'🎬 Vidéo', direct:'📡 Direct'}[p.postType] || '';
     let mediaHtml = '';
     if(p.media?.kind === 'image') mediaHtml = `<img src="${p.media.src}" class="media-box">`;
-    else if(p.media?.kind === 'video') mediaHtml = `<video src="${p.media.src}" ${p.media.mime?`type="${p.media.mime}"`:''} controls playsinline preload="metadata" class="media-box" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'media-box live-placeholder',textContent:'⚠️ Cette vidéo ne peut pas être lue sur cet appareil.'}))"></video>`;
+    else if(p.media?.kind === 'video') mediaHtml = `<video src="${p.media.src}" data-name="${(p.media.name||'video').replace(/"/g,'')}" controls playsinline preload="metadata" class="media-box" onerror="voxliveVideoFail(this)" onloadstart="voxliveVideoWatchdog(this)" onloadedmetadata="this.dataset.ready='1'" oncanplay="this.dataset.ready='1'"></video>`;
     else if(p.media?.kind === 'iframe') mediaHtml = `<iframe src="${p.media.src}" class="media-box" allowfullscreen></iframe>` +
       (p.media.original ? `<a href="${p.media.original}" target="_blank" style="display:block; font-size:11px; color:var(--muted); margin-top:6px;">Le direct ne s'affiche pas ? Ouvrir le lien d'origine ↗</a>` : '');
     else if(p.media?.kind === 'live-placeholder') mediaHtml = `<div class="media-box live-placeholder"><span class="live-dot"></span>EN DIRECT — aperçu indisponible</div>`;
@@ -1649,7 +2023,7 @@ function renderMediaFeed(elId, limit){
 
     return `<div class="card media-card">
       <div class="media-head">
-        <div class="media-avatar"></div>
+        <div class="media-avatar" ${p.author?.logo ? `style="background:none;"` : ''}>${p.author?.logo ? `<img src="${p.author.logo}" style="width:100%; height:100%; border-radius:50%; object-fit:cover;">` : ''}</div>
         <div style="min-width:0;">
           <div style="font-weight:700; font-size:13px;">${p.author?.name || 'Anonyme'}</div>
           <div style="font-size:11px; color:var(--muted);">${role} · ${typeTag}</div>
@@ -1741,6 +2115,16 @@ function renderFeatured(){
   document.getElementById('phone-question').textContent = p.title;
   document.getElementById('card-question').textContent = p.title;
   document.getElementById('poll-id').textContent = 'ID : ' + p.code;
+  const authBox = document.getElementById('featured-author');
+  if(p.remote && p.author?.name){
+    authBox.style.display = 'flex';
+    document.getElementById('featured-author-name').textContent = '👤 ' + p.author.name + (p.author.role && p.author.role!=='particulier' ? ' · ' + p.author.role : '');
+    const logoImg = document.getElementById('featured-author-logo');
+    if(p.author.logo){ logoImg.src = p.author.logo; logoImg.style.display = 'inline-block'; }
+    else logoImg.style.display = 'none';
+  } else {
+    authBox.style.display = 'none';
+  }
   document.getElementById('pour-pct-label').textContent = pp.toFixed(1).replace('.',',')+'%';
   document.getElementById('contre-pct-label').textContent = cp.toFixed(1).replace('.',',')+'%';
   document.getElementById('pour-votes-label').textContent = fmt(p.pour)+' votes';
@@ -1748,6 +2132,7 @@ function renderFeatured(){
   document.getElementById('donut-total').textContent = fmt(total(p));
   document.getElementById('total-voters').textContent = fmt(total(p));
   document.getElementById('phone-total').textContent = fmt(total(p));
+  document.getElementById('phone-more').textContent = '+' + fmt(Math.max(0, total(p)-5));
   document.getElementById('pour-live-pct').textContent = Math.round(pp)+'%';
   document.getElementById('contre-live-pct').textContent = Math.round(cp)+'%';
   document.getElementById('trend-lead').textContent = (pp>=cp ? 'POUR en tête ↗' : 'CONTRE en tête ↗');
@@ -1768,30 +2153,38 @@ function renderFeatured(){
   drawLine(buildHistory(p, currentPeriod));
 }
 
-function renderAll(){
+function anyVideoPlaying(elId){
+  const el = document.getElementById(elId);
+  if(!el) return false;
+  return Array.from(el.querySelectorAll('video')).some(v=>!v.paused && !v.ended);
+}
+function renderAll(isTick){
   renderFeatured();
   renderTrendGrid('trending-grid-home', false);
-  renderMediaFeed('media-feed-home', 3);
+  if(!(isTick && anyVideoPlaying('media-feed-home'))) renderMediaFeed('media-feed-home', 3);
   if(document.getElementById('view-tendances').classList.contains('active')) renderTrendGrid('trending-grid-full', true);
   if(document.getElementById('view-mes').classList.contains('active')) renderMesSondages();
-  if(document.getElementById('view-medias').classList.contains('active')) renderMediaFeed('media-feed-full');
+  if(document.getElementById('view-medias').classList.contains('active') && !(isTick && anyVideoPlaying('media-feed-full'))) renderMediaFeed('media-feed-full');
   if(document.getElementById('view-afrique').classList.contains('active')) renderAfrica();
   if(document.getElementById('view-profil').classList.contains('active')) renderDashboard();
   renderTvMode();
 }
 
-/* ---------- SIMULATION EN DIRECT (uniquement sur le sondage vedette) ---------- */
+/* ---------- SIMULATION EN DIRECT (uniquement sur le sondage vedette, et jamais sur un sondage réel) ---------- */
 setInterval(()=>{
   const p = featured();
+  if(!p || p.remote){ renderAll(true); return; } // jamais de fausses données sur un sondage réel/backend
   const lean = pourPct(p) > contrePct(p) ? 0.6 : 0.5;
   if(Math.random() < lean) p.pour += Math.floor(Math.random()*3)+1;
   else p.contre += Math.floor(Math.random()*3)+1;
   if(Math.random() < 0.3) addActivity(Math.random()<0.55?'pour':'contre', false);
   else renderActivity(); // refresh relative timestamps even without a new entry
-  renderAll();
+  renderAll(true);
 }, 3000);
 
 window.addEventListener('resize', ()=>drawLine(buildHistory(featured(), currentPeriod)));
+updateAuthUI();
+loadRemotePolls();
 renderAll();
 </script>
 </body>
