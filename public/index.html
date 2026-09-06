@@ -783,7 +783,13 @@
           <div class="pquestion" id="phone-question">Faut-il renforcer l'entrepreneuriat à l'école ?</div>
           <button class="vote-btn pour" id="phone-btn-pour" onclick="castVote('pour')">POUR 👍<span id="pour-live-pct">63%</span></button>
           <button class="vote-btn contre" id="phone-btn-contre" onclick="castVote('contre')">CONTRE 👎<span id="contre-live-pct">37%</span></button>
-          <div class="voted-flag" id="phone-voted-flag">✓ Vote enregistré — merci !</div>
+          <div class="voted-flag" id="phone-voted-flag">
+            ✓ Vote enregistré — merci pour votre participation !
+            <div style="display:flex;gap:8px;margin-top:8px;">
+              <button class="btn btn-outline" style="flex:1;padding:8px;font-size:12px;" onclick="subscribeVoxLive()">🔔 S'abonner</button>
+              <button class="btn btn-green" style="flex:1;padding:8px;font-size:12px;" onclick="sharePoll()">📤 Partager</button>
+            </div>
+          </div>
           <div class="vcount">Déjà <b id="phone-total">128 542</b> votes</div>
           <div style="display:flex;align-items:center;">
             <div class="avatars"><div class="av"></div><div class="av"></div><div class="av"></div><div class="av"></div><div class="av"></div><span class="more" id="phone-more">+128K</span></div>
@@ -1682,17 +1688,29 @@ function selectPoll(id){
 }
 
 /* ---------- PARTAGE ---------- */
+function pollShareUrl(p){
+  return `${location.origin}${location.pathname}?p=${encodeURIComponent(p.code)}`;
+}
 function sharePoll(){
   const p = featured();
   shareCount++;
-  const text = `VoxLive — ${p.title} (${p.code})`;
+  const url = pollShareUrl(p);
+  const text = `📢 Donne ton avis sur VoxLive !\n« ${p.title} »\n🗳️ Vote et découvre les résultats en direct 👉`;
   if(navigator.share){
-    navigator.share({title:'VoxLive', text}).catch(()=>{});
+    navigator.share({title:'VoxLive', text, url}).catch(()=>{});
   } else if(navigator.clipboard){
-    navigator.clipboard.writeText(text).then(()=>toast('Lien du sondage copié !'));
+    navigator.clipboard.writeText(text + ' ' + url).then(()=>toast('Lien du sondage copié !'));
   } else {
-    toast(text);
+    toast(text + ' ' + url);
   }
+}
+function subscribeVoxLive(){
+  if(!authToken){
+    toast('Connecte-toi pour t\'abonner aux notifications VoxLive.');
+    openAuthModal();
+    return;
+  }
+  toast('🔔 Abonnement enregistré — tu seras alerté des prochains sondages.');
 }
 
 /* ---------- MODE TV (VoxLive Live Screen) ---------- */
@@ -1716,7 +1734,7 @@ function renderTvMode(){
   document.getElementById('tv-pct-contre').textContent = cp+'%';
   document.getElementById('tv-total').textContent = fmt(total(p));
   document.getElementById('tv-code').textContent = p.code;
-  const shareUrl = `https://voxlive.africa/poll/${p.code}`; // illustratif — deviendra un vrai lien une fois le backend en ligne
+  const shareUrl = pollShareUrl(p);
   document.getElementById('tv-qr').src = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&bgcolor=ffffff&data=${encodeURIComponent(shareUrl)}`;
 }
 document.addEventListener('keydown', (e)=>{ if(e.key === 'Escape') closeTvMode(); });
@@ -2217,6 +2235,26 @@ window.addEventListener('resize', ()=>drawLine(buildHistory(featured(), currentP
 updateAuthUI();
 loadRemotePolls();
 renderAll();
+
+/* ---------- LIEN DIRECT VERS UN SONDAGE (?p=CODE) ---------- */
+(function openSharedPollFromUrl(){
+  const code = new URLSearchParams(location.search).get('p');
+  if(!code) return;
+  const tryOpen = (attemptsLeft)=>{
+    const match = polls.find(p=>p.code === code);
+    if(match){
+      featuredId = match.id;
+      go('accueil');
+      renderAll();
+      toast('Sondage partagé chargé !');
+    } else if(attemptsLeft > 0){
+      setTimeout(()=>tryOpen(attemptsLeft-1), 700); // laisse le temps à loadRemotePolls() de répondre
+    } else {
+      toast('Sondage introuvable — il a peut-être été retiré.');
+    }
+  };
+  tryOpen(6);
+})();
 </script>
 </body>
 </html>
