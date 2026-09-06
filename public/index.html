@@ -1256,7 +1256,11 @@ function createRealPoll(title, question, category, scope){
   })
   .then(async r => {
     const data = await r.json();
-    if(!r.ok) throw new Error(data.error || 'Erreur lors de la création du sondage.');
+    if(!r.ok){
+      const err = new Error(data.error || 'Erreur lors de la création du sondage.');
+      err.code = data.code;
+      throw err;
+    }
     return data;
   })
   .then(data => {
@@ -1268,7 +1272,13 @@ function createRealPoll(title, question, category, scope){
     go('accueil');
     renderAll();
   })
-  .catch(err => toast('⚠️ ' + err.message));
+  .catch(err => {
+    toast('⚠️ ' + err.message);
+    if(err.code === 'FREE_LIMIT_REACHED'){
+      closeModal();
+      setTimeout(()=>go('tarifs'), 900);
+    }
+  });
 }
 
 function updateAuthUI(){

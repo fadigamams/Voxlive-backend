@@ -29,6 +29,8 @@ async function pollWithResults(pollId) {
   return rows[0] || null;
 }
 
+const FREE_POLL_LIMIT = 2; // nombre de sondages réels gratuits par compte
+
 router.post('/', requireAuth, async (req, res) => {
   try {
     const { title, question, category, scope } = req.body || {};
@@ -37,6 +39,21 @@ router.post('/', requireAuth, async (req, res) => {
     }
     if (!question || !question.trim()) {
       return res.status(400).json({ error: 'La question est requise.' });
+    }
+
+    const userRes = await pool.query('SELECT plan FROM users WHERE id = $1', [req.user.sub]);
+    const plan = userRes.rows[0]?.plan || 'free';
+    if (plan === 'free') {
+      const { rows: countRows } = await pool.query(
+        'SELECT COUNT(*)::int AS n FROM polls WHERE user_id = $1',
+        [req.user.sub]
+      );
+      if (countRows[0].n >= FREE_POLL_LIMIT) {
+        return res.status(402).json({
+          error: `Limite de ${FREE_POLL_LIMIT} sondages gratuits atteinte. Passe à un abonnement CREATOR ou supérieur pour continuer à créer des sondages.`,
+          code: 'FREE_LIMIT_REACHED'
+        });
+      }
     }
 
     let code, inserted;
