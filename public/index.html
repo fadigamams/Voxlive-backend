@@ -898,6 +898,7 @@
         <div class="africa-map" id="countryTabs"></div>
         <div class="city-chips" id="cityChips"></div>
         <div class="africa-stat-row" id="africaStatRow"></div>
+        <p id="africaSimNote" style="font-size:11px;color:#f0b429;margin:4px 0 10px;"></p>
         <div class="trend-grid wide" id="trending-grid-africa"></div>
       </section>
     </section>
@@ -1781,6 +1782,8 @@ function renderAfrica(){
     <div class="as">${country.flag} ${country.name}${selectedCity?' · '+selectedCity:''}<b>${countryPct.toFixed(0)}% favorable</b></div>
     <div class="as">Sur le sondage<b style="font-size:12px;">${p.title}</b></div>
   `;
+  const noteEl = document.getElementById('africaSimNote');
+  if(noteEl) noteEl.textContent = "⚠️ Estimation simulée à titre illustratif — aucune donnée réelle de vote par pays/ville n'est encore collectée.";
   const el = document.getElementById('trending-grid-africa');
   const list = polls.filter(x=>x.hasPoll).sort((a,b)=>total(b)-total(a)).slice(0,6);
   el.innerHTML = list.map((x,i)=>{
@@ -1957,6 +1960,16 @@ function expandActivity(){
 }
 function renderActivity(){
   const feedEl = document.getElementById('activity-feed');
+  const p = featured();
+  if(p && p.remote){
+    const n = total(p);
+    feedEl.innerHTML = n > 0
+      ? `<div class="activity-item"><div class="info" style="font-size:12px;color:var(--muted);">Sondage réel — ${fmt(n)} vote(s) enregistré(s) au total. Le détail des votants est disponible via "Mon tableau de bord".</div></div>`
+      : `<div class="activity-item"><div class="info" style="font-size:12px;color:var(--muted);">Aucun vote pour l'instant sur ce sondage réel.</div></div>`;
+    document.getElementById('activity-expand-btn').style.display = 'none';
+    return;
+  }
+  document.getElementById('activity-expand-btn').style.display = '';
   const list = activityExpanded ? activityLog.slice(0,30) : activityLog.slice(0,5);
   feedEl.innerHTML = list.map(a=>{
     const secs = Math.max(0, Math.round((Date.now()-a.t)/1000));
