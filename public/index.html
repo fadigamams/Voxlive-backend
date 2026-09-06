@@ -1161,7 +1161,8 @@ let polls = [
   mkPoll('p5','VXL-4F60Z',"Faut-il interdire les réseaux sociaux aux moins de 16 ans ?",'Numérique','internationale',43448,55297,false),
 ];
 let featuredId = 'p0';
-let votedPolls = {};     // { pollId: 'pour'|'contre' } — empêche de voter deux fois sur le même sondage
+let votedPolls = JSON.parse(localStorage.getItem('voxlive_voted') || '{}'); // { pollId: 'pour'|'contre' } — empêche de voter deux fois sur le même sondage, persiste entre les sessions
+function saveVotedPolls(){ localStorage.setItem('voxlive_voted', JSON.stringify(votedPolls)); }
 let currentPeriod = '24h';
 let currentScope = 'populaires';
 let activityLog = [];
@@ -1664,7 +1665,11 @@ function voteOn(id, choice){
     })
     .then(async r => {
       const data = await r.json();
-      if(!r.ok) throw new Error(data.error || 'Erreur lors du vote.');
+      if(!r.ok){
+        const err = new Error(data.error || 'Erreur lors du vote.');
+        err.alreadyVoted = r.status === 409 && /déjà voté/i.test(data.error || '');
+        throw err;
+      }
       return data;
     })
     .then(data => {
@@ -1672,11 +1677,19 @@ function voteOn(id, choice){
       const idx = polls.findIndex(x => x.id === id);
       if(idx !== -1) polls[idx] = updated;
       votedPolls[id] = choice;
+      saveVotedPolls();
       addActivity(choice, true);
       toast('Vote enregistré — c\'est réel !');
       renderAll();
     })
-    .catch(err => toast('⚠️ ' + err.message));
+    .catch(err => {
+      toast('⚠️ ' + err.message);
+      if(err.alreadyVoted){
+        votedPolls[id] = choice; // resynchronise l'état local avec le serveur
+        saveVotedPolls();
+        renderAll();
+      }
+    });
     return;
   }
 
@@ -1684,6 +1697,7 @@ function voteOn(id, choice){
   if(votedPolls[p.id]){ toast('Vous avez déjà voté sur ce sondage.'); return; }
   if(choice==='pour') p.pour++; else p.contre++;
   votedPolls[p.id] = choice;
+  saveVotedPolls();
   addActivity(choice, true);
   toast('Merci pour votre vote !');
   renderAll();
