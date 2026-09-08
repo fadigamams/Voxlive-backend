@@ -29,6 +29,8 @@ const pollsLimiter = rateLimit({
   message: { error: 'Trop de requêtes, ralentis un peu.' },
 });
 
+const voxidRoutes = require('./routes/voxid');
+app.use('/api/voxid', pollsLimiter, voxidRoutes);
 app.use('/api/auth', authLimiter, authRoutes);
 app.use('/api/polls', pollsLimiter, pollsRoutes);
 

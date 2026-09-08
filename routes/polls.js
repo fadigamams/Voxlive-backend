@@ -362,4 +362,85 @@ router.post('/:id/runoff', requireAuth, async (req, res) => {
   }
 });
 
+router.post('/:id/validators', requireAuth, async (req, res) => {
+  try {
+    const { phone, email } = req.body || {};
+    if (!phone && !email) {
+      return res.status(400).json({ error: 'Indique le téléphone ou l\'email de la personne de confiance.' });
+    }
+    const pollRes = await pool.query('SELECT id, user_id FROM polls WHERE id::text = $1 OR code = $1', [req.params.id]);
+    const poll = pollRes.rows[0];
+    if (!poll) return res.status(404).json({ error: 'Sondage introuvable.' });
+    if (poll.user_id !== req.user.sub) {
+      return res.status(403).json({ error: "Tu n'es pas l'organisateur de ce sondage." });
+    }
+
+    const userRes = await pool.query(
+      'SELECT id, name FROM users WHERE phone = $1 OR email = $2',
+      [phone || null, email || null]
+    );
+    const validatorUser = userRes.rows[0];
+    if (!validatorUser) {
+      return res.status(404).json({ error: 'Aucun compte VoxLive trouvé avec ces coordonnées. La personne doit d\'abord s\'inscrire.' });
+    }
+    if (validatorUser.id === req.user.sub) {
+      return res.status(400).json({ error: 'Tu ne peux pas te désigner toi-même comme validateur.' });
+    }
+
+    try {
+      await pool.query(
+        'INSERT INTO poll_validators (poll_id, validator_user_id, added_by) VALUES ($1, $2, $3)',
+        [poll.id, validatorUser.id, req.user.sub]
+      );
+    } catch (err) {
+      if (err.code === '23505') {
+        return res.status(409).json({ error: 'Cette personne est déjà validateur pour ce sondage.' });
+      }
+      throw err;
+    }
+
+    res.status(201).json({ validator: { id: validatorUser.id, name: validatorUser.name } });
+  } catch (err) {
+    console.error('Erreur POST /polls/:id/validators :', err);
+    res.status(500).json({ error: 'Erreur serveur, réessaie plus tard.' });
+  }
+});
+
+router.get('/:id/validators', requireAuth, async (req, res) => {
+  try {
+    const pollRes = await pool.query('SELECT id, user_id FROM polls WHERE id::text = $1 OR code = $1', [req.params.id]);
+    const poll = pollRes.rows[0];
+    if (!poll) return res.status(404).json({ error: 'Sondage introuvable.' });
+    if (poll.user_id !== req.user.sub) {
+      return res.status(403).json({ error: "Tu n'es pas l'organisateur de ce sondage." });
+    }
+    const { rows } = await pool.query(
+      `SELECT u.id, u.name, pv.created_at
+       FROM poll_validators pv JOIN users u ON u.id = pv.validator_user_id
+       WHERE pv.poll_id = $1 ORDER BY pv.created_at ASC`,
+      [poll.id]
+    );
+    res.json({ validators: rows });
+  } catch (err) {
+    console.error('Erreur GET /polls/:id/validators :', err);
+    res.status(500).json({ error: 'Erreur serveur, réessaie plus tard.' });
+  }
+});
+
+router.delete('/:id/validators/:validatorId', requireAuth, async (req, res) => {
+  try {
+    const pollRes = await pool.query('SELECT id, user_id FROM polls WHERE id::text = $1 OR code = $1', [req.params.id]);
+    const poll = pollRes.rows[0];
+    if (!poll) return res.status(404).json({ error: 'Sondage introuvable.' });
+    if (poll.user_id !== req.user.sub) {
+      return res.status(403).json({ error: "Tu n'es pas l'organisateur de ce sondage." });
+    }
+    await pool.query('DELETE FROM poll_validators WHERE poll_id = $1 AND validator_user_id = $2', [poll.id, req.params.validatorId]);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Erreur DELETE /polls/:id/validators/:validatorId :', err);
+    res.status(500).json({ error: 'Erreur serveur, réessaie plus tard.' });
+  }
+});
+
 module.exports = router;
