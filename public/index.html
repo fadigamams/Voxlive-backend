@@ -818,7 +818,7 @@
           </div>
         </div>
         <div class="phone">
-          <div class="status"><span>9:41</span><span>●●●</span></div>
+          <div class="status"><span id="phone-clock">9:41</span><span>●●●</span></div>
           <div style="display:flex;justify-content:space-between;align-items:center;">
             <span class="ptitle">Sondage en direct</span>
             <span class="badge-live">● LIVE</span>
@@ -875,7 +875,7 @@
           <div id="multiResultsLive" style="display:none;"></div>
         </div>
 
-        <div class="card">
+        <div class="card" id="evolutionCard">
           <div class="card-head">
             <h3>ÉVOLUTION EN TEMPS RÉEL</h3>
             <select class="chart-select" id="periodSelect" onchange="changePeriod(this.value)">
@@ -2526,6 +2526,7 @@ function renderFeaturedMulti(p){
   document.getElementById('phone-btn-contre').style.display = 'none';
   document.getElementById('voteCountBlock').style.display = 'none';
   document.getElementById('binaryResultsBlock').style.display = 'none';
+  document.getElementById('evolutionCard').style.display = 'none';
   document.getElementById('phone-question').textContent = p.title;
   document.getElementById('card-question').textContent = p.title;
   document.getElementById('poll-id').textContent = 'ID : ' + p.code;
@@ -2588,6 +2589,7 @@ function renderFeaturedMulti(p){
       liveEl.style.display = 'none';
     }
   }
+  renderActivity();
 }
 
 function votedFlagHtml(){
@@ -2610,6 +2612,7 @@ function renderFeatured(){
   document.getElementById('voteCountBlock').style.display = '';
   document.getElementById('binaryResultsBlock').style.display = '';
   document.getElementById('multiResultsLive').style.display = 'none';
+  document.getElementById('evolutionCard').style.display = '';
   document.getElementById('phone-btn-pour').style.display = '';
   document.getElementById('phone-btn-contre').style.display = '';
 
@@ -2686,6 +2689,13 @@ setInterval(()=>{
   else renderActivity(); // refresh relative timestamps even without a new entry
   renderAll(true);
 }, 3000);
+
+function updatePhoneClock(){
+  const el = document.getElementById('phone-clock');
+  if(el) el.textContent = new Date().toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'});
+}
+updatePhoneClock();
+setInterval(updatePhoneClock, 30000);
 
 window.addEventListener('resize', ()=>drawLine(buildHistory(featured(), currentPeriod)));
 updateAuthUI();
