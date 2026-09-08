@@ -572,17 +572,21 @@
 
 <div class="modal-overlay" id="voxidModalOverlay" onclick="if(event.target===this) closeVoxidSubmitModal();">
   <div class="modal">
-    <div class="modal-head"><h2>🪪 Vérification VoxID</h2><button class="close-x" onclick="closeVoxidSubmitModal()">✕</button></div>
-    <p style="font-size:12px;color:var(--muted);margin-bottom:12px;">
+    <div class="modal-head"><h2 id="voxid-modal-title">🪪 Vérification VoxID</h2><button class="close-x" onclick="closeVoxidSubmitModal()">✕</button></div>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:12px;" id="voxid-modal-desc">
       Cette élection est sensible et nécessite une identité vérifiée. Une seule vérification suffit pour toutes tes futures élections sensibles.
       Aucun numéro de pièce n'est demandé — seulement ton nom et une photo.
     </p>
     <div class="field">
-      <label>Nom complet (tel qu'il apparaît sur ta pièce)</label>
+      <label id="voxid-name-label">Nom complet (tel qu'il apparaît sur ta pièce)</label>
       <input type="text" id="in-voxid-name" placeholder="Ex : Fadiga Amadou">
     </div>
+    <div class="field" id="f-voxid-membership" style="display:none;">
+      <label>Numéro de carte de membre</label>
+      <input type="text" id="in-voxid-membership" placeholder="Ex : ADH-2026-0417">
+    </div>
     <div class="field">
-      <label>Photo d'une pièce avec nom + photo (CNI, carte d'électeur, permis, passeport...)</label>
+      <label id="voxid-photo-label">Photo d'une pièce avec nom + photo (CNI, carte d'électeur, permis, passeport...)</label>
       <input type="file" id="in-voxid-photo" accept="image/*" onchange="onVoxidPhotoChange(event)">
       <img id="voxid-photo-preview" style="display:none;width:100%;max-height:200px;object-fit:contain;border-radius:10px;margin-top:8px;background:#0a1120;">
     </div>
@@ -655,10 +659,20 @@
         </div>
         <div class="field">
           <label>Niveau de sécurité</label>
-          <select id="in-security-level">
+          <select id="in-security-level" onchange="onSecurityLevelChange()">
             <option value="populaire">🟢 Populaire (compte simple)</option>
             <option value="sensible">🔴 Sensible (VoxID vérifié requis)</option>
           </select>
+        </div>
+        <div class="field" id="f-verification-type" style="display:none;">
+          <label>Type de vérification</label>
+          <select id="in-verification-type">
+            <option value="open">🪪 Ouverte — nom + photo d'une pièce d'identité</option>
+            <option value="strict">🎫 Stricte — carte de membre spécifique à cette élection</option>
+          </select>
+          <p style="font-size:11px;color:var(--muted);margin-top:6px;">
+            « Ouverte » accepte CNI, carte d'électeur, permis, passeport. « Stricte » exige la carte de membre de l'organisation qui organise cette élection — à utiliser pour un vote réservé à un groupe précis (association, syndicat, club...).
+          </p>
         </div>
         <div class="field">
           <label>Date et heure de fin (optionnel)</label>
@@ -1307,6 +1321,7 @@ function apiPollToLocal(ap){
     remote: true,
     pollType: ap.poll_type || 'binaire',
     securityLevel: ap.security_level || 'populaire',
+    verificationType: ap.verification_type || 'open',
     closesAt: ap.closes_at || null,
     runoffOf: ap.runoff_of || null,
     status: ap.status || 'active',
@@ -1679,6 +1694,10 @@ function onPollTypeChange(){
 function getCandidateValues(){
   return Array.from(document.querySelectorAll('.candidate-input')).map(i=>i.value.trim()).filter(Boolean);
 }
+function onSecurityLevelChange(){
+  const isSensible = document.getElementById('in-security-level').value === 'sensible';
+  document.getElementById('f-verification-type').style.display = isSensible ? '' : 'none';
+}
 
 function submitPostInner(){
   document.querySelectorAll('.field').forEach(f=>f.classList.remove('error'));
@@ -1702,6 +1721,7 @@ function submitPostInner(){
     scope = document.getElementById('in-scope').value;
     const pollType = document.getElementById('in-poll-type').value;
     const securityLevel = document.getElementById('in-security-level').value;
+    const verificationType = securityLevel === 'sensible' ? document.getElementById('in-verification-type').value : 'open';
     const closesAtRaw = document.getElementById('in-closes-at').value;
     const closesAt = closesAtRaw ? new Date(closesAtRaw).toISOString() : null;
     let candidateOptions = [];
@@ -1714,7 +1734,7 @@ function submitPostInner(){
     }
     if(authToken){
       createRealPoll(title, question, cat, scope, {
-        pollType, securityLevel, closesAt,
+        pollType, securityLevel, verificationType, closesAt,
         options: pollType === 'multi' ? candidateOptions : undefined
       });
       return false; // la suite (fermeture, toast, navigation) est gérée dans createRealPoll()
@@ -2184,13 +2204,27 @@ function renderVoxidStatusBox(){
 }
 
 let pendingVoxidPollId = null;
+let pendingVoxidType = 'open';
 function openVoxidSubmitModal(pollId){
   pendingVoxidPollId = pollId;
+  const poll = findPoll(pollId);
+  pendingVoxidType = (poll && poll.verificationType === 'strict') ? 'strict' : 'open';
+
+  const isStrict = pendingVoxidType === 'strict';
+  document.getElementById('voxid-modal-title').textContent = isStrict ? '🎫 Vérification — Carte de membre' : '🪪 Vérification VoxID';
+  document.getElementById('voxid-modal-desc').textContent = isStrict
+    ? 'Cette élection est réservée aux membres. Indique ton nom, ton numéro de carte de membre et une photo de la carte.'
+    : "Cette élection est sensible et nécessite une identité vérifiée. Une seule vérification suffit pour toutes tes futures élections sensibles. Aucun numéro de pièce n'est demandé — seulement ton nom et une photo.";
+  document.getElementById('voxid-name-label').textContent = isStrict ? 'Nom complet (tel qu\'il apparaît sur ta carte de membre)' : 'Nom complet (tel qu\'il apparaît sur ta pièce)';
+  document.getElementById('voxid-photo-label').textContent = isStrict ? 'Photo de ta carte de membre (recto, nom + photo lisibles)' : "Photo d'une pièce avec nom + photo (CNI, carte d'électeur, permis, passeport...)";
+  document.getElementById('f-voxid-membership').style.display = isStrict ? '' : 'none';
+
   document.getElementById('voxidModalOverlay').classList.add('open');
 }
 function closeVoxidSubmitModal(){
   document.getElementById('voxidModalOverlay').classList.remove('open');
   document.getElementById('in-voxid-name').value = '';
+  document.getElementById('in-voxid-membership').value = '';
   document.getElementById('in-voxid-photo').value = '';
   document.getElementById('voxid-photo-preview').style.display = 'none';
 }
@@ -2208,23 +2242,30 @@ function onVoxidPhotoChange(e){
 }
 function submitVoxidRequest(){
   const fullName = document.getElementById('in-voxid-name').value.trim();
+  const membershipCardNumber = document.getElementById('in-voxid-membership').value.trim();
   const photoImg = document.getElementById('voxid-photo-preview');
   const documentPhotoDataUrl = photoImg.style.display !== 'none' ? photoImg.src : null;
-  if(!fullName){ toast('Indique ton nom complet, tel qu\'il apparaît sur ta pièce.'); return; }
-  if(!documentPhotoDataUrl){ toast('Ajoute une photo de ta pièce d\'identité.'); return; }
+  const isStrict = pendingVoxidType === 'strict';
+  if(!fullName){ toast(isStrict ? 'Indique ton nom complet, tel qu\'il apparaît sur ta carte de membre.' : 'Indique ton nom complet, tel qu\'il apparaît sur ta pièce.'); return; }
+  if(isStrict && !membershipCardNumber){ toast('Indique ton numéro de carte de membre.'); return; }
+  if(!documentPhotoDataUrl){ toast(isStrict ? 'Ajoute une photo de ta carte de membre.' : 'Ajoute une photo de ta pièce d\'identité.'); return; }
 
   fetch(API_BASE + '/api/voxid/submit', {
     method: 'POST',
     headers: {'Content-Type':'application/json', 'Authorization':'Bearer ' + authToken},
-    body: JSON.stringify({fullName, documentPhotoDataUrl, pollId: pendingVoxidPollId})
+    body: JSON.stringify({
+      fullName, documentPhotoDataUrl, pollId: pendingVoxidPollId,
+      verificationType: pendingVoxidType,
+      membershipCardNumber: isStrict ? membershipCardNumber : undefined
+    })
   })
   .then(async r => {
     const data = await r.json();
     if(!r.ok) throw new Error(data.error || 'Erreur lors de l\'envoi.');
     return data;
   })
-  .then(() => {
-    toast('Demande envoyée ! Tu pourras voter dès qu\'un validateur t\'aura approuvé.');
+  .then((data) => {
+    toast(data.autoValidated ? '✅ Identité vérifiée automatiquement, tu peux voter !' : 'Demande envoyée ! Tu pourras voter dès qu\'un validateur t\'aura approuvé.');
     closeVoxidSubmitModal();
   })
   .catch(err => toast('⚠️ ' + err.message));
