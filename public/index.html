@@ -853,6 +853,7 @@
             <span id="featured-author-name" style="font-size:12px; font-weight:700; color:var(--muted);"></span>
           </div>
           <div class="qtitle" id="card-question">Faut-il renforcer l'entrepreneuriat à l'école ?</div>
+          <div id="binaryResultsBlock">
           <div class="donut-wrap">
             <div class="donut-side pour">POUR<div class="pct" id="pour-pct-label">63,4%</div><span id="pour-votes-label">81 542 votes</span></div>
             <div class="donut-center">
@@ -870,6 +871,8 @@
           <div class="disclaimer-line">Vote ouvert — ne constitue pas nécessairement un sondage scientifique représentatif.</div>
           <button class="qc-btn" style="width:100%; margin-top:10px;" onclick="analyzeWithAI()">🤖 Analyser avec VoxLive AI</button>
           <div class="insight-box" id="insightBox"></div>
+          </div>
+          <div id="multiResultsLive" style="display:none;"></div>
         </div>
 
         <div class="card">
@@ -2522,6 +2525,7 @@ function renderFeaturedMulti(p){
   document.getElementById('phone-btn-pour').style.display = 'none';
   document.getElementById('phone-btn-contre').style.display = 'none';
   document.getElementById('voteCountBlock').style.display = 'none';
+  document.getElementById('binaryResultsBlock').style.display = 'none';
   document.getElementById('phone-question').textContent = p.title;
   document.getElementById('card-question').textContent = p.title;
   document.getElementById('poll-id').textContent = 'ID : ' + p.code;
@@ -2567,6 +2571,22 @@ function renderFeaturedMulti(p){
     }).join('');
     flagEl.innerHTML = votedFlagHtml();
     flagEl.classList.toggle('show', already);
+
+    const liveEl = document.getElementById('multiResultsLive');
+    if(p.totalVotes > 0){
+      liveEl.style.display = '';
+      const sorted = [...options].sort((a,b) => b.votes - a.votes);
+      const leader = sorted[0];
+      const leaderTied = sorted.filter(o => o.votes === leader.votes).length > 1;
+      liveEl.innerHTML = `
+        <div style="font-size:11px;color:var(--muted);margin:10px 0 6px;">📊 CLASSEMENT EN DIRECT · ${fmt(p.totalVotes)} votes</div>
+        <div style="font-weight:700;margin-bottom:8px;">${leaderTied ? '🤝 Égalité en tête' : '🏆 En tête : ' + leader.label + ' (' + leader.percent + '%)'}</div>
+        ${sorted.map(o => `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--card-border);font-size:13px;">
+          <span>#${o.rank} ${o.label}</span><b>${o.percent}%</b>
+        </div>`).join('')}`;
+    } else {
+      liveEl.style.display = 'none';
+    }
   }
 }
 
@@ -2588,6 +2608,8 @@ function renderFeatured(){
   document.getElementById('candidate-vote-list').style.display = 'none';
   document.getElementById('election-results-panel').style.display = 'none';
   document.getElementById('voteCountBlock').style.display = '';
+  document.getElementById('binaryResultsBlock').style.display = '';
+  document.getElementById('multiResultsLive').style.display = 'none';
   document.getElementById('phone-btn-pour').style.display = '';
   document.getElementById('phone-btn-contre').style.display = '';
 
