@@ -730,7 +730,7 @@
   <button class="tv-close" onclick="closeTvMode()">✕</button>
   <div class="tv-badge">🔴 VOXLIVE LIVE SCREEN</div>
   <div class="tv-question" id="tv-question">—</div>
-  <div class="tv-bars">
+  <div class="tv-bars" id="tv-bars-binaire">
     <div class="tv-bar-row">
       <div class="tv-lab pour">POUR</div>
       <div class="tv-track"><div class="tv-fill pour" id="tv-fill-pour" style="width:50%"></div></div>
@@ -742,6 +742,7 @@
       <div class="tv-pct" id="tv-pct-contre">50%</div>
     </div>
   </div>
+  <div class="tv-bars" id="tv-bars-multi" style="display:none;"></div>
   <div class="tv-meta"><span id="tv-total">0</span> votants — scannez pour voter</div>
   <div class="tv-qr-wrap">
     <img id="tv-qr" src="" alt="QR Code">
@@ -1878,13 +1879,30 @@ function closeTvMode(){
 function renderTvMode(){
   if(!document.getElementById('tvMode').classList.contains('open')) return;
   const p = featured();
-  const pp = Math.round(pourPct(p)), cp = 100-pp;
   document.getElementById('tv-question').textContent = p.title;
-  document.getElementById('tv-fill-pour').style.width = pp+'%';
-  document.getElementById('tv-fill-contre').style.width = cp+'%';
-  document.getElementById('tv-pct-pour').textContent = pp+'%';
-  document.getElementById('tv-pct-contre').textContent = cp+'%';
-  document.getElementById('tv-total').textContent = fmt(total(p));
+
+  if(p.remote && p.pollType === 'multi'){
+    document.getElementById('tv-bars-binaire').style.display = 'none';
+    const box = document.getElementById('tv-bars-multi');
+    box.style.display = '';
+    const options = (p.options || []).slice().sort((a,b)=>b.votes-a.votes);
+    box.innerHTML = options.map(o => `<div class="tv-bar-row">
+        <div class="tv-lab" style="color:#fff;">${o.label}</div>
+        <div class="tv-track"><div class="tv-fill pour" style="width:${o.percent}%"></div></div>
+        <div class="tv-pct">${o.percent}%</div>
+      </div>`).join('');
+    document.getElementById('tv-total').textContent = fmt(p.totalVotes || 0);
+  } else {
+    document.getElementById('tv-bars-binaire').style.display = '';
+    document.getElementById('tv-bars-multi').style.display = 'none';
+    const pp = Math.round(pourPct(p)), cp = 100-pp;
+    document.getElementById('tv-fill-pour').style.width = pp+'%';
+    document.getElementById('tv-fill-contre').style.width = cp+'%';
+    document.getElementById('tv-pct-pour').textContent = pp+'%';
+    document.getElementById('tv-pct-contre').textContent = cp+'%';
+    document.getElementById('tv-total').textContent = fmt(total(p));
+  }
+
   document.getElementById('tv-code').textContent = p.code;
   const shareUrl = pollShareUrl(p);
   document.getElementById('tv-qr').src = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&bgcolor=ffffff&data=${encodeURIComponent(shareUrl)}`;
