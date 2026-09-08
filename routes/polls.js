@@ -161,20 +161,10 @@ router.post('/', requireAuth, async (req, res) => {
 router.get('/', async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT
-         p.id, p.code, p.title, p.question, p.category, p.scope, p.status, p.created_at,
-         u.name AS author_name, u.role AS author_role, u.logo_url AS author_logo,
-         COUNT(v.id) FILTER (WHERE v.choice = 'pour')   AS pour_count,
-         COUNT(v.id) FILTER (WHERE v.choice = 'contre') AS contre_count
-       FROM polls p
-       JOIN users u ON u.id = p.user_id
-       LEFT JOIN votes v ON v.poll_id = p.id
-       WHERE p.status = 'active'
-       GROUP BY p.id, u.name, u.role, u.logo_url
-       ORDER BY p.created_at DESC
-       LIMIT 50`
+      `SELECT id FROM polls WHERE status = 'active' ORDER BY created_at DESC LIMIT 50`
     );
-    res.json({ polls: rows });
+    const polls = await Promise.all(rows.map(r => pollWithResults(r.id)));
+    res.json({ polls: polls.filter(Boolean) });
   } catch (err) {
     console.error('Erreur GET /polls :', err);
     res.status(500).json({ error: 'Erreur serveur, réessaie plus tard.' });
