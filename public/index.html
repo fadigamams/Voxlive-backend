@@ -570,6 +570,26 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="voxidModalOverlay" onclick="if(event.target===this) closeVoxidSubmitModal();">
+  <div class="modal">
+    <div class="modal-head"><h2>🪪 Vérification VoxID</h2><button class="close-x" onclick="closeVoxidSubmitModal()">✕</button></div>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:12px;">
+      Cette élection est sensible et nécessite une identité vérifiée. Une seule vérification suffit pour toutes tes futures élections sensibles.
+      Aucun numéro de pièce n'est demandé — seulement ton nom et une photo.
+    </p>
+    <div class="field">
+      <label>Nom complet (tel qu'il apparaît sur ta pièce)</label>
+      <input type="text" id="in-voxid-name" placeholder="Ex : Fadiga Amadou">
+    </div>
+    <div class="field">
+      <label>Photo d'une pièce avec nom + photo (CNI, carte d'électeur, permis, passeport...)</label>
+      <input type="file" id="in-voxid-photo" accept="image/*" onchange="onVoxidPhotoChange(event)">
+      <img id="voxid-photo-preview" style="display:none;width:100%;max-height:200px;object-fit:contain;border-radius:10px;margin-top:8px;background:#0a1120;">
+    </div>
+    <button class="btn btn-green" style="width:100%;" onclick="submitVoxidRequest()">Envoyer pour validation</button>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this) closeModal();">
   <div class="modal">
     <div class="modal-head"><h2>Publier</h2><button class="close-x" onclick="closeModal()">✕</button></div>
@@ -1026,6 +1046,12 @@
       </section>
 
       <section class="card">
+        <h3>🪪 MON VOXID</h3>
+        <div id="voxidStatusBox"></div>
+        <button class="btn btn-outline" style="width:100%;margin-top:10px;" onclick="go('voxid')">Gérer VoxID (validateurs, file d'attente)</button>
+      </section>
+
+      <section class="card">
         <div class="trend-head"><h3>📊 MON TABLEAU DE BORD</h3><span class="verified-badge" id="verifiedBadge" style="display:none;">✓ Vérifié</span></div>
         <p style="font-size:11.5px;color:var(--muted);margin-top:-6px;margin-bottom:10px;">Statistiques basées uniquement sur vos sondages réels (serveur) — les cartes de démonstration locale ne sont jamais comptées ici.</p>
         <div class="voxscore-wrap">
@@ -1109,7 +1135,36 @@
     </section>
 
     <!-- ===== VUE TARIFS ===== -->
+    <section class="view" id="view-voxid">
+      <section class="card">
+        <h3>🪪 VOXID — Identité vérifiée</h3>
+        <div id="voxidStatusBoxFull"></div>
+      </section>
+
+      <section class="card">
+        <h3>👥 Validateurs de mes élections</h3>
+        <p style="font-size:11.5px;color:var(--muted);">Désigne une personne de confiance (déjà inscrite sur VoxLive) pour valider les identités sur tes élections sensibles.</p>
+        <div class="field">
+          <label>Code ou ID de l'élection</label>
+          <input type="text" id="in-validator-poll" placeholder="Ex : VXL-ABCDE">
+        </div>
+        <div class="field">
+          <label>Téléphone ou email de la personne</label>
+          <input type="text" id="in-validator-contact" placeholder="Numéro ou email déjà inscrit">
+        </div>
+        <button class="vote-btn" style="background:var(--green);margin-bottom:10px;" onclick="addValidator()">+ Ajouter comme validateur</button>
+        <div id="validatorListBox"></div>
+      </section>
+
+      <section class="card">
+        <h3>🗂️ File d'attente à valider</h3>
+        <p style="font-size:11.5px;color:var(--muted);">Demandes qui te sont assignées, une à la fois.</p>
+        <div id="voxidQueueBox"></div>
+      </section>
+    </section>
+
     <section class="view" id="view-tarifs">
+
       <section class="card">
         <div class="trend-head"><h3>💳 VOXLIVE — OFFRES & TARIFS</h3></div>
         <div class="pricing-grid">
@@ -1454,6 +1509,7 @@ function go(view){
   if(view === 'events') renderEvents();
   if(view === 'profil') renderDashboard();
   if(view === 'tarifs') renderPaymentGrid();
+  if(view === 'voxid') renderVoxidView();
   window.scrollTo({top:0, behavior:'smooth'});
 }
 function openMenu(){ document.getElementById('sideMenu').classList.add('open'); document.getElementById('menuOverlay').classList.add('open'); }
@@ -1733,6 +1789,7 @@ function voteOn(id, choice){
       if(!r.ok){
         const err = new Error(data.error || 'Erreur lors du vote.');
         err.alreadyVoted = r.status === 409 && /déjà voté/i.test(data.error || '');
+        err.code = data.code;
         throw err;
       }
       return data;
@@ -1754,6 +1811,7 @@ function voteOn(id, choice){
         saveVotedPolls();
         renderAll();
       }
+      if(err.code === 'VOXID_REQUIRED') openVoxidSubmitModal(id);
     });
     return;
   }
@@ -1995,6 +2053,7 @@ function showMyToken(){
 }
 
 function renderDashboard(){
+  renderVoxidStatusBox();
   const mine = polls.filter(p=>p.remote && p.hasPoll); // uniquement les sondages réels (serveur), jamais les démos locales simulées
   const votesRecus = mine.reduce((s,p)=>s+total(p), 0);
   const participants = votesRecus;
@@ -2088,6 +2147,156 @@ function renderActivity(){
     </div>`;
   }).join('');
 }
+/* ============ VOXID ============ */
+function renderVoxidStatusBox(){
+  const short = document.getElementById('voxidStatusBox');
+  const full = document.getElementById('voxidStatusBoxFull');
+  const html = (!authToken)
+    ? `<p style="font-size:12px;color:var(--muted);">Connecte-toi pour vérifier ton identité.</p>`
+    : currentUser?.voxid_verified
+      ? `<div style="color:var(--green);font-weight:700;">✅ Identité vérifiée — ${currentUser.voxid || ''}</div><p style="font-size:11.5px;color:var(--muted);margin-top:4px;">Tu peux voter sur les élections sensibles.</p>`
+      : `<div style="color:#f0b429;font-weight:700;">⏳ Identité non vérifiée</div><p style="font-size:11.5px;color:var(--muted);margin-top:4px;">La demande se fait automatiquement quand tu essaies de voter sur une élection sensible.</p>`;
+  if(short) short.innerHTML = html;
+  if(full) full.innerHTML = html;
+}
+
+let pendingVoxidPollId = null;
+function openVoxidSubmitModal(pollId){
+  pendingVoxidPollId = pollId;
+  document.getElementById('voxidModalOverlay').classList.add('open');
+}
+function closeVoxidSubmitModal(){
+  document.getElementById('voxidModalOverlay').classList.remove('open');
+  document.getElementById('in-voxid-name').value = '';
+  document.getElementById('in-voxid-photo').value = '';
+  document.getElementById('voxid-photo-preview').style.display = 'none';
+}
+function onVoxidPhotoChange(e){
+  const file = e.target.files[0];
+  if(!file) return;
+  if(file.size > 1_500_000){ toast('Photo trop volumineuse (1,5 Mo maximum).'); e.target.value=''; return; }
+  const reader = new FileReader();
+  reader.onload = () => {
+    const img = document.getElementById('voxid-photo-preview');
+    img.src = reader.result;
+    img.style.display = 'block';
+  };
+  reader.readAsDataURL(file);
+}
+function submitVoxidRequest(){
+  const fullName = document.getElementById('in-voxid-name').value.trim();
+  const photoImg = document.getElementById('voxid-photo-preview');
+  const documentPhotoDataUrl = photoImg.style.display !== 'none' ? photoImg.src : null;
+  if(!fullName){ toast('Indique ton nom complet, tel qu\'il apparaît sur ta pièce.'); return; }
+  if(!documentPhotoDataUrl){ toast('Ajoute une photo de ta pièce d\'identité.'); return; }
+
+  fetch(API_BASE + '/api/voxid/submit', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json', 'Authorization':'Bearer ' + authToken},
+    body: JSON.stringify({fullName, documentPhotoDataUrl, pollId: pendingVoxidPollId})
+  })
+  .then(async r => {
+    const data = await r.json();
+    if(!r.ok) throw new Error(data.error || 'Erreur lors de l\'envoi.');
+    return data;
+  })
+  .then(() => {
+    toast('Demande envoyée ! Tu pourras voter dès qu\'un validateur t\'aura approuvé.');
+    closeVoxidSubmitModal();
+  })
+  .catch(err => toast('⚠️ ' + err.message));
+}
+
+function addValidator(){
+  const pollRef = document.getElementById('in-validator-poll').value.trim();
+  const contact = document.getElementById('in-validator-contact').value.trim();
+  if(!pollRef || !contact){ toast('Renseigne le code de l\'élection et le contact du validateur.'); return; }
+  const body = contact.includes('@') ? {email: contact} : {phone: contact};
+  fetch(API_BASE + '/api/polls/' + encodeURIComponent(pollRef) + '/validators', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json', 'Authorization':'Bearer ' + authToken},
+    body: JSON.stringify(body)
+  })
+  .then(async r => {
+    const data = await r.json();
+    if(!r.ok) throw new Error(data.error || 'Erreur lors de l\'ajout.');
+    return data;
+  })
+  .then(() => {
+    toast('Validateur ajouté !');
+    loadValidatorList(pollRef);
+  })
+  .catch(err => toast('⚠️ ' + err.message));
+}
+function loadValidatorList(pollRef){
+  if(!pollRef) return;
+  fetch(API_BASE + '/api/polls/' + encodeURIComponent(pollRef) + '/validators', {
+    headers: {'Authorization':'Bearer ' + authToken}
+  })
+  .then(r => r.json())
+  .then(data => {
+    const box = document.getElementById('validatorListBox');
+    if(!data.validators) return;
+    box.innerHTML = data.validators.length === 0
+      ? `<p style="font-size:11.5px;color:var(--muted);">Aucun validateur pour cette élection.</p>`
+      : data.validators.map(v => `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--card-border);"><span>${v.name}</span>
+          <button class="qc-btn" style="padding:4px 8px;font-size:11px;" onclick="removeValidator('${pollRef}','${v.id}')">Retirer</button></div>`).join('');
+  })
+  .catch(()=>{});
+}
+function removeValidator(pollRef, validatorId){
+  fetch(API_BASE + '/api/polls/' + encodeURIComponent(pollRef) + '/validators/' + validatorId, {
+    method: 'DELETE',
+    headers: {'Authorization':'Bearer ' + authToken}
+  })
+  .then(() => { toast('Validateur retiré.'); loadValidatorList(pollRef); })
+  .catch(()=>toast('Erreur lors du retrait.'));
+}
+
+function renderVoxidView(){
+  renderVoxidStatusBox();
+  if(!authToken){
+    document.getElementById('voxidQueueBox').innerHTML = `<p style="font-size:12px;color:var(--muted);">Connecte-toi pour accéder à cette page.</p>`;
+    return;
+  }
+  loadVoxidQueue();
+}
+function loadVoxidQueue(){
+  fetch(API_BASE + '/api/voxid/queue', { headers: {'Authorization':'Bearer ' + authToken} })
+  .then(r => r.json())
+  .then(data => {
+    const box = document.getElementById('voxidQueueBox');
+    if(!data.queue || data.queue.length === 0){
+      box.innerHTML = `<p style="font-size:12px;color:var(--muted);">Aucune demande en attente pour toi actuellement.</p>`;
+      return;
+    }
+    const req = data.queue[0]; // une seule à la fois — swipe-like
+    box.innerHTML = `
+      <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">Élection : ${req.poll_title} (${req.poll_code}) — ${data.queue.length} en attente</div>
+      <img src="${req.document_photo_url}" style="width:100%;max-height:260px;object-fit:contain;border-radius:10px;background:#0a1120;margin-bottom:10px;">
+      <div style="font-weight:700;font-size:16px;margin-bottom:12px;">${req.full_name_submitted}</div>
+      <div style="display:flex;gap:10px;">
+        <button class="btn btn-outline" style="flex:1;background:#3b1010;border-color:#7f1d1d;" onclick="decideVoxid('${req.id}','rejected')">❌ Rejeter</button>
+        <button class="btn btn-green" style="flex:1;" onclick="decideVoxid('${req.id}','approved')">✅ Valider</button>
+      </div>`;
+  })
+  .catch(()=>{});
+}
+function decideVoxid(requestId, decision){
+  fetch(API_BASE + '/api/voxid/' + requestId + '/decide', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json', 'Authorization':'Bearer ' + authToken},
+    body: JSON.stringify({decision})
+  })
+  .then(async r => {
+    const data = await r.json();
+    if(!r.ok) throw new Error(data.error || 'Erreur.');
+    return data;
+  })
+  .then(() => { toast(decision === 'approved' ? 'Identité validée ✅' : 'Demande rejetée.'); loadVoxidQueue(); })
+  .catch(err => toast('⚠️ ' + err.message));
+}
+
 for(let i=0;i<5;i++){ addActivity(Math.random()>0.4?'pour':'contre', false); }
 
 /* ---------- TENDANCES (grilles) — uniquement les sondages actifs (hasPoll) ---------- */
@@ -2282,6 +2491,7 @@ function voteOnOption(pollId, optionId){
       saveVotedPolls();
       renderAll();
     }
+    if(err.code === 'VOXID_REQUIRED') openVoxidSubmitModal(pollId);
   });
 }
 
