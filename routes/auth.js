@@ -48,7 +48,7 @@ router.post('/register', async (req, res) => {
     const { rows } = await pool.query(
       `INSERT INTO users (name, email, phone, password_hash, role)
        VALUES ($1, $2, $3, $4, $5)
-       RETURNING id, name, email, phone, role, logo_url, vox_score, verified, created_at, password_hash`,
+       RETURNING id, name, email, phone, role, logo_url, voxid, voxid_verified, vox_score, verified, created_at, password_hash`,
       [name.trim(), email?.trim() || null, phone?.trim() || null, passwordHash, finalRole]
     );
 
@@ -93,7 +93,7 @@ router.post('/login', async (req, res) => {
 router.get('/me', requireAuth, async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT id, name, email, phone, role, logo_url, vox_score, verified, created_at
+      `SELECT id, name, email, phone, role, logo_url, voxid, voxid_verified, vox_score, verified, created_at
        FROM users WHERE id = $1`,
       [req.user.sub]
     );
@@ -117,7 +117,7 @@ router.patch('/me/logo', requireAuth, async (req, res) => {
 
     const { rows } = await pool.query(
       `UPDATE users SET logo_url = $1 WHERE id = $2
-       RETURNING id, name, email, phone, role, logo_url, vox_score, verified, created_at`,
+       RETURNING id, name, email, phone, role, logo_url, voxid, voxid_verified, vox_score, verified, created_at`,
       [logo_data_url, req.user.sub]
     );
     res.json({ user: rows[0] });
