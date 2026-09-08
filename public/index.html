@@ -622,6 +622,29 @@
           <div class="field-err">La question est obligatoire.</div>
         </div>
         <div class="field">
+          <label>Type de sondage</label>
+          <select id="in-poll-type" onchange="onPollTypeChange()">
+            <option value="binaire">📊 Binaire (Pour / Contre)</option>
+            <option value="multi">🗳️ Élection (plusieurs candidats)</option>
+          </select>
+        </div>
+        <div id="grp-candidates" style="display:none;">
+          <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:6px;">Candidats (2 minimum)</label>
+          <div id="candidate-list"></div>
+          <button type="button" class="qc-btn" style="margin-bottom:14px;" onclick="addCandidateField()">+ Ajouter un candidat</button>
+        </div>
+        <div class="field">
+          <label>Niveau de sécurité</label>
+          <select id="in-security-level">
+            <option value="populaire">🟢 Populaire (compte simple)</option>
+            <option value="sensible">🔴 Sensible (VoxID vérifié requis)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Date et heure de fin (optionnel)</label>
+          <input type="datetime-local" id="in-closes-at">
+        </div>
+        <div class="field">
           <label>Catégorie</label>
           <select id="in-cat">
             <option>Éducation</option><option>Société</option><option>Économie</option>
@@ -783,13 +806,9 @@
           <div class="pquestion" id="phone-question">Faut-il renforcer l'entrepreneuriat à l'école ?</div>
           <button class="vote-btn pour" id="phone-btn-pour" onclick="castVote('pour')">POUR 👍<span id="pour-live-pct">63%</span></button>
           <button class="vote-btn contre" id="phone-btn-contre" onclick="castVote('contre')">CONTRE 👎<span id="contre-live-pct">37%</span></button>
-          <div class="voted-flag" id="phone-voted-flag">
-            ✓ Vote enregistré — merci pour votre participation !
-            <div style="display:flex;gap:8px;margin-top:8px;">
-              <button class="btn btn-outline" style="flex:1;padding:8px;font-size:12px;" onclick="subscribeVoxLive()">🔔 S'abonner</button>
-              <button class="btn btn-green" style="flex:1;padding:8px;font-size:12px;" onclick="sharePoll()">📤 Partager</button>
-            </div>
-          </div>
+          <div id="candidate-vote-list" style="display:none;"></div>
+          <div id="election-results-panel" style="display:none;"></div>
+          <div class="voted-flag" id="phone-voted-flag"></div>
           <div class="vcount">Déjà <b id="phone-total">128 542</b> votes</div>
           <div style="display:flex;align-items:center;">
             <div class="avatars"><div class="av"></div><div class="av"></div><div class="av"></div><div class="av"></div><div class="av"></div><span class="more" id="phone-more">+128K</span></div>
@@ -1224,7 +1243,16 @@ function apiPollToLocal(ap){
     createdAt: ap.created_at ? new Date(ap.created_at).getTime() : Date.now(),
     hasPoll: true, isMediaPost: false, postType: 'sondage', media: null, caption: '',
     author: {name: ap.author_name, role: ap.author_role, logo: ap.author_logo || null},
-    remote: true
+    remote: true,
+    pollType: ap.poll_type || 'binaire',
+    securityLevel: ap.security_level || 'populaire',
+    closesAt: ap.closes_at || null,
+    runoffOf: ap.runoff_of || null,
+    status: ap.status || 'active',
+    options: ap.options || null,
+    totalVotes: ap.total_votes || 0,
+    winner: ap.winner || null,
+    tie: ap.tie || null
   };
 }
 
@@ -1249,11 +1277,12 @@ function loadRemotePolls(){
     });
 }
 
-function createRealPoll(title, question, category, scope){
+function createRealPoll(title, question, category, scope, extra){
+  extra = extra || {};
   fetch(API_BASE + '/api/polls', {
     method: 'POST',
     headers: {'Content-Type':'application/json', 'Authorization':'Bearer ' + authToken},
-    body: JSON.stringify({title, question, category, scope})
+    body: JSON.stringify(Object.assign({title, question, category, scope}, extra))
   })
   .then(async r => {
     const data = await r.json();
@@ -1568,6 +1597,27 @@ function submitPost(e){
     return false;
   }
 }
+let candidateCount = 0;
+function addCandidateField(value){
+  const wrap = document.getElementById('candidate-list');
+  const idx = candidateCount++;
+  const row = document.createElement('div');
+  row.style.cssText = 'display:flex;gap:8px;margin-bottom:8px;';
+  row.innerHTML = `<input type="text" class="candidate-input" placeholder="Nom du candidat ${idx+1}" value="${value ? value.replace(/"/g,'&quot;') : ''}" style="flex:1;">
+    <button type="button" class="qc-btn" style="padding:8px 12px;" onclick="this.parentElement.remove()">✕</button>`;
+  wrap.appendChild(row);
+}
+function onPollTypeChange(){
+  const isMulti = document.getElementById('in-poll-type').value === 'multi';
+  document.getElementById('grp-candidates').style.display = isMulti ? '' : 'none';
+  if(isMulti && document.querySelectorAll('.candidate-input').length === 0){
+    addCandidateField(); addCandidateField();
+  }
+}
+function getCandidateValues(){
+  return Array.from(document.querySelectorAll('.candidate-input')).map(i=>i.value.trim()).filter(Boolean);
+}
+
 function submitPostInner(){
   document.querySelectorAll('.field').forEach(f=>f.classList.remove('error'));
 
@@ -1588,8 +1638,23 @@ function submitPostInner(){
     }
     cat = document.getElementById('in-cat').value;
     scope = document.getElementById('in-scope').value;
+    const pollType = document.getElementById('in-poll-type').value;
+    const securityLevel = document.getElementById('in-security-level').value;
+    const closesAtRaw = document.getElementById('in-closes-at').value;
+    const closesAt = closesAtRaw ? new Date(closesAtRaw).toISOString() : null;
+    let candidateOptions = [];
+    if(pollType === 'multi'){
+      candidateOptions = getCandidateValues();
+      if(candidateOptions.length < 2){
+        toast('Ajoute au moins 2 candidats pour une élection.');
+        return false;
+      }
+    }
     if(authToken){
-      createRealPoll(title, question, cat, scope);
+      createRealPoll(title, question, cat, scope, {
+        pollType, securityLevel, closesAt,
+        options: pollType === 'multi' ? candidateOptions : undefined
+      });
       return false; // la suite (fermeture, toast, navigation) est gérée dans createRealPoll()
     }
   } else if(type === 'photo' || type === 'video'){
@@ -2180,8 +2245,138 @@ function drawLine(hist){
 }
 
 /* ---------- RENDU GLOBAL DU SONDAGE VEDETTE ---------- */
+function voteOnOption(pollId, optionId){
+  const p = findPoll(pollId);
+  if(!p) return;
+  if(votedPolls[pollId]){ toast('Tu as déjà voté sur cette élection.'); return; }
+  if(!authToken){ toast('Connecte-toi pour voter sur une élection réelle.'); openAuthModal(); return; }
+
+  fetch(API_BASE + '/api/polls/' + pollId + '/vote', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json', 'Authorization':'Bearer ' + authToken},
+    body: JSON.stringify({optionId})
+  })
+  .then(async r => {
+    const data = await r.json();
+    if(!r.ok){
+      const err = new Error(data.error || 'Erreur lors du vote.');
+      err.code = data.code;
+      err.alreadyVoted = r.status === 409 && /déjà voté/i.test(data.error || '');
+      throw err;
+    }
+    return data;
+  })
+  .then(data => {
+    const updated = apiPollToLocal(data.poll);
+    const idx = polls.findIndex(x => x.id === pollId);
+    if(idx !== -1) polls[idx] = updated;
+    votedPolls[pollId] = optionId;
+    saveVotedPolls();
+    toast('Vote enregistré — c\'est réel !');
+    renderAll();
+  })
+  .catch(err => {
+    toast('⚠️ ' + err.message);
+    if(err.alreadyVoted){
+      votedPolls[pollId] = optionId;
+      saveVotedPolls();
+      renderAll();
+    }
+  });
+}
+
+function launchRunoff(pollId){
+  fetch(API_BASE + '/api/polls/' + pollId + '/runoff', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json', 'Authorization':'Bearer ' + authToken},
+    body: JSON.stringify({})
+  })
+  .then(async r => {
+    const data = await r.json();
+    if(!r.ok) throw new Error(data.error || 'Erreur lors de la création du second tour.');
+    return data;
+  })
+  .then(data => {
+    const p = apiPollToLocal(data.poll);
+    polls.unshift(p);
+    featuredId = p.id;
+    toast('Second tour créé !');
+    renderAll();
+  })
+  .catch(err => toast('⚠️ ' + err.message));
+}
+
+function renderFeaturedMulti(p){
+  document.getElementById('phone-btn-pour').style.display = 'none';
+  document.getElementById('phone-btn-contre').style.display = 'none';
+  document.getElementById('phone-question').textContent = p.title;
+  document.getElementById('card-question').textContent = p.title;
+  document.getElementById('poll-id').textContent = 'ID : ' + p.code;
+  const authBox = document.getElementById('featured-author');
+  if(p.author?.name){
+    authBox.style.display = 'flex';
+    document.getElementById('featured-author-name').textContent = '👤 ' + p.author.name;
+    document.getElementById('featured-author-logo').style.display = 'none';
+  } else authBox.style.display = 'none';
+
+  const already = !!votedPolls[p.id];
+  const options = p.options || [];
+  const listEl = document.getElementById('candidate-vote-list');
+  const resultsEl = document.getElementById('election-results-panel');
+  const flagEl = document.getElementById('phone-voted-flag');
+
+  if(p.status === 'closed'){
+    listEl.style.display = 'none';
+    resultsEl.style.display = '';
+    flagEl.classList.remove('show');
+    let winnerLine;
+    if(p.tie){
+      winnerLine = `<div style="color:#f0b429;font-weight:700;margin-bottom:8px;">🤝 Égalité parfaite entre ${p.tie.map(o=>o.label).join(' et ')}</div>` +
+        (p.createdByUser ? `<button class="btn btn-green" style="width:100%;margin-bottom:10px;" onclick="launchRunoff('${p.id}')">🔁 Lancer un second tour</button>` : '');
+    } else if(p.winner){
+      winnerLine = `<div style="color:var(--green);font-weight:700;margin-bottom:8px;">🏆 Vainqueur : ${p.winner.label}</div>`;
+    } else {
+      winnerLine = `<div style="color:var(--muted);margin-bottom:8px;">Aucun vote enregistré.</div>`;
+    }
+    const medals = ['🥇','🥈','🥉'];
+    resultsEl.innerHTML = `<div style="font-size:11px;color:var(--muted);margin-bottom:8px;">🏆 RÉSULTATS FINAUX · ${fmt(p.totalVotes)} votes exprimés</div>` +
+      winnerLine +
+      options.map(o => `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--card-border);">
+        <span>${medals[o.rank-1] || '#'+o.rank} ${o.label}</span>
+        <b>${fmt(o.votes)} (${o.percent}%)</b>
+      </div>`).join('');
+  } else {
+    resultsEl.style.display = 'none';
+    listEl.style.display = '';
+    listEl.innerHTML = options.map(o => {
+      const chosen = votedPolls[p.id] === o.id;
+      return `<button class="vote-btn" style="background:${chosen?'var(--green)':'#0a1120'};margin-bottom:8px;" ${already?'disabled':''} onclick="voteOnOption('${p.id}','${o.id}')">${o.label}${o.votes!=null && already ? ' — '+fmt(o.votes)+' votes' : ''}</button>`;
+    }).join('');
+    flagEl.innerHTML = votedFlagHtml();
+    flagEl.classList.toggle('show', already);
+  }
+}
+
+function votedFlagHtml(){
+  return `✓ Vote enregistré — merci pour votre participation !
+    <div style="display:flex;gap:8px;margin-top:8px;">
+      <button class="btn btn-outline" style="flex:1;padding:8px;font-size:12px;" onclick="subscribeVoxLive()">🔔 S'abonner</button>
+      <button class="btn btn-green" style="flex:1;padding:8px;font-size:12px;" onclick="sharePoll()">📤 Partager</button>
+    </div>`;
+}
+
 function renderFeatured(){
   const p = featured();
+
+  if(p.remote && p.pollType === 'multi'){
+    renderFeaturedMulti(p);
+    return;
+  }
+  document.getElementById('candidate-vote-list').style.display = 'none';
+  document.getElementById('election-results-panel').style.display = 'none';
+  document.getElementById('phone-btn-pour').style.display = '';
+  document.getElementById('phone-btn-contre').style.display = '';
+
   const pp = pourPct(p), cp = contrePct(p);
   const already = !!votedPolls[p.id];
 
@@ -2220,6 +2415,7 @@ function renderFeatured(){
   btnPour.disabled = already; btnContre.disabled = already;
   btnPour.classList.toggle('chosen', votedPolls[p.id]==='pour');
   btnContre.classList.toggle('chosen', votedPolls[p.id]==='contre');
+  document.getElementById('phone-voted-flag').innerHTML = votedFlagHtml();
   document.getElementById('phone-voted-flag').classList.toggle('show', already);
 
   drawDonut(p);
