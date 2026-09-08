@@ -829,9 +829,11 @@
           <div id="candidate-vote-list" style="display:none;"></div>
           <div id="election-results-panel" style="display:none;"></div>
           <div class="voted-flag" id="phone-voted-flag"></div>
-          <div class="vcount">Déjà <b id="phone-total">128 542</b> votes</div>
-          <div style="display:flex;align-items:center;">
-            <div class="avatars"><div class="av"></div><div class="av"></div><div class="av"></div><div class="av"></div><div class="av"></div><span class="more" id="phone-more">+128K</span></div>
+          <div id="voteCountBlock">
+            <div class="vcount">Déjà <b id="phone-total">128 542</b> votes</div>
+            <div style="display:flex;align-items:center;">
+              <div class="avatars"><div class="av"></div><div class="av"></div><div class="av"></div><div class="av"></div><div class="av"></div><span class="more" id="phone-more">+128K</span></div>
+            </div>
           </div>
         </div>
       </section>
@@ -2519,6 +2521,7 @@ function launchRunoff(pollId){
 function renderFeaturedMulti(p){
   document.getElementById('phone-btn-pour').style.display = 'none';
   document.getElementById('phone-btn-contre').style.display = 'none';
+  document.getElementById('voteCountBlock').style.display = 'none';
   document.getElementById('phone-question').textContent = p.title;
   document.getElementById('card-question').textContent = p.title;
   document.getElementById('poll-id').textContent = 'ID : ' + p.code;
@@ -2560,7 +2563,7 @@ function renderFeaturedMulti(p){
     listEl.style.display = '';
     listEl.innerHTML = options.map(o => {
       const chosen = votedPolls[p.id] === o.id;
-      return `<button class="vote-btn" style="background:${chosen?'var(--green)':'#0a1120'};margin-bottom:8px;" ${already?'disabled':''} onclick="voteOnOption('${p.id}','${o.id}')">${o.label}${o.votes!=null && already ? ' — '+fmt(o.votes)+' votes' : ''}</button>`;
+      return `<button class="vote-btn" style="background:${chosen?'var(--green)':'#1a2540'};border:1px solid ${chosen?'var(--green)':'#334155'};color:#fff;margin-bottom:8px;" ${already?'disabled':''} onclick="voteOnOption('${p.id}','${o.id}')">${o.label}${o.votes!=null && already ? ' — '+fmt(o.votes)+' votes' : ''}</button>`;
     }).join('');
     flagEl.innerHTML = votedFlagHtml();
     flagEl.classList.toggle('show', already);
@@ -2584,6 +2587,7 @@ function renderFeatured(){
   }
   document.getElementById('candidate-vote-list').style.display = 'none';
   document.getElementById('election-results-panel').style.display = 'none';
+  document.getElementById('voteCountBlock').style.display = '';
   document.getElementById('phone-btn-pour').style.display = '';
   document.getElementById('phone-btn-contre').style.display = '';
 
