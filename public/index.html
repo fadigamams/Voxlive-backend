@@ -2151,7 +2151,7 @@ function renderActivity(){
   const feedEl = document.getElementById('activity-feed');
   const p = featured();
   if(p && p.remote){
-    const n = total(p);
+    const n = p.pollType === 'multi' ? (p.totalVotes || 0) : total(p);
     feedEl.innerHTML = n > 0
       ? `<div class="activity-item"><div class="info" style="font-size:12px;color:var(--muted);">Sondage réel — ${fmt(n)} vote(s) enregistré(s) au total. Le détail des votants est disponible via "Mon tableau de bord".</div></div>`
       : `<div class="activity-item"><div class="info" style="font-size:12px;color:var(--muted);">Aucun vote pour l'instant sur ce sondage réel.</div></div>`;
