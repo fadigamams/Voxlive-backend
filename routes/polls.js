@@ -15,6 +15,7 @@ async function pollWithResults(pollId) {
   const { rows } = await pool.query(
     `SELECT
        p.id, p.code, p.title, p.question, p.category, p.scope, p.status,
+       p.poll_type, p.security_level, p.verification_type, p.closes_at, p.runoff_of,
        p.created_at, p.user_id,
        u.name AS author_name, u.role AS author_role, u.logo_url AS author_logo,
        COUNT(v.id) FILTER (WHERE v.choice = 'pour')   AS pour_count,
@@ -26,19 +27,75 @@ async function pollWithResults(pollId) {
      GROUP BY p.id, u.name, u.role, u.logo_url`,
     [pollId]
   );
-  return rows[0] || null;
+  const poll = rows[0];
+  if (!poll) return null;
+
+  await maybeAutoClose(poll);
+
+  if (poll.poll_type === 'multi') {
+    const { rows: options } = await pool.query(
+      `SELECT o.id, o.label, o.photo_url, o.display_order,
+              COUNT(v.id)::int AS votes
+       FROM poll_options o
+       LEFT JOIN votes v ON v.option_id = o.id
+       WHERE o.poll_id = $1
+       GROUP BY o.id
+       ORDER BY o.display_order ASC, o.created_at ASC`,
+      [pollId]
+    );
+    const totalVotes = options.reduce((sum, o) => sum + o.votes, 0);
+    const sorted = [...options].sort((a, b) => b.votes - a.votes);
+    let rank = 0, prevVotes = null;
+    const ranked = sorted.map((o, i) => {
+      if (o.votes !== prevVotes) { rank = i + 1; prevVotes = o.votes; }
+      return { ...o, rank, percent: totalVotes ? Math.round((o.votes / totalVotes) * 1000) / 10 : 0 };
+    });
+    poll.options = ranked;
+    poll.total_votes = totalVotes;
+    if (poll.status === 'closed') {
+      const topScore = ranked[0]?.votes ?? 0;
+      const winners = ranked.filter(o => o.votes === topScore && topScore > 0);
+      poll.winner = winners.length === 1 ? winners[0] : null;
+      poll.tie = winners.length > 1 ? winners : null;
+    }
+  }
+  return poll;
+}
+
+async function maybeAutoClose(poll) {
+  if (poll.status === 'active' && poll.closes_at && new Date(poll.closes_at) <= new Date()) {
+    await pool.query("UPDATE polls SET status = 'closed' WHERE id = $1", [poll.id]);
+    poll.status = 'closed';
+  }
 }
 
 const FREE_POLL_LIMIT = 2; // nombre de sondages réels gratuits par compte
+const FREE_MULTI_OPTION_LIMIT = 4; // nombre de candidats max en gratuit pour une élection multi
 
 router.post('/', requireAuth, async (req, res) => {
   try {
-    const { title, question, category, scope } = req.body || {};
+    const { title, question, category, scope, pollType, options, securityLevel, verificationType, closesAt } = req.body || {};
     if (!title || !title.trim()) {
       return res.status(400).json({ error: 'Le titre est requis.' });
     }
     if (!question || !question.trim()) {
       return res.status(400).json({ error: 'La question est requise.' });
+    }
+    const type = pollType === 'multi' ? 'multi' : 'binaire';
+    const security = securityLevel === 'sensible' ? 'sensible' : 'populaire';
+    const vType = security === 'sensible' && verificationType === 'strict' ? 'strict' : 'open';
+
+    let cleanOptions = [];
+    if (type === 'multi') {
+      cleanOptions = Array.isArray(options)
+        ? options
+            .map(o => (typeof o === 'string' ? { label: o, photoDataUrl: null } : { label: o?.label, photoDataUrl: o?.photoDataUrl || null }))
+            .map(o => ({ label: String(o.label || '').trim(), photoDataUrl: o.photoDataUrl && String(o.photoDataUrl).startsWith('data:image') ? o.photoDataUrl : null }))
+            .filter(o => o.label)
+        : [];
+      if (cleanOptions.length < 2) {
+        return res.status(400).json({ error: 'Une élection multi-candidats nécessite au moins 2 candidats.' });
+      }
     }
 
     const userRes = await pool.query('SELECT plan FROM users WHERE id = $1', [req.user.sub]);
@@ -54,6 +111,21 @@ router.post('/', requireAuth, async (req, res) => {
           code: 'FREE_LIMIT_REACHED'
         });
       }
+      if (type === 'multi' && cleanOptions.length > FREE_MULTI_OPTION_LIMIT) {
+        return res.status(402).json({
+          error: `Le plan gratuit limite les élections à ${FREE_MULTI_OPTION_LIMIT} candidats. Passe à un abonnement supérieur pour en ajouter davantage.`,
+          code: 'FREE_LIMIT_REACHED'
+        });
+      }
+    }
+
+    let closesAtValue = null;
+    if (closesAt) {
+      const d = new Date(closesAt);
+      if (isNaN(d.getTime()) || d <= new Date()) {
+        return res.status(400).json({ error: 'La date de fin doit être une date valide dans le futur.' });
+      }
+      closesAtValue = d.toISOString();
     }
 
     let code, inserted;
@@ -61,10 +133,10 @@ router.post('/', requireAuth, async (req, res) => {
       code = generateCode();
       try {
         const { rows } = await pool.query(
-          `INSERT INTO polls (code, user_id, title, question, category, scope)
-           VALUES ($1, $2, $3, $4, $5, $6)
+          `INSERT INTO polls (code, user_id, title, question, category, scope, poll_type, security_level, verification_type, closes_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
            RETURNING id`,
-          [code, req.user.sub, title.trim(), question.trim(), category || 'Société', scope || 'nationale']
+          [code, req.user.sub, title.trim(), question.trim(), category || 'Société', scope || 'nationale', type, security, vType, closesAtValue]
         );
         inserted = rows[0];
       } catch (err) {
@@ -73,6 +145,15 @@ router.post('/', requireAuth, async (req, res) => {
     }
     if (!inserted) {
       return res.status(500).json({ error: 'Impossible de générer un code unique, réessaie.' });
+    }
+
+    if (type === 'multi') {
+      for (let i = 0; i < cleanOptions.length; i++) {
+        await pool.query(
+          'INSERT INTO poll_options (poll_id, label, photo_url, display_order) VALUES ($1, $2, $3, $4)',
+          [inserted.id, cleanOptions[i].label, cleanOptions[i].photoDataUrl, i]
+        );
+      }
     }
 
     const poll = await pollWithResults(inserted.id);
@@ -86,20 +167,10 @@ router.post('/', requireAuth, async (req, res) => {
 router.get('/', async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT
-         p.id, p.code, p.title, p.question, p.category, p.scope, p.status, p.created_at,
-         u.name AS author_name, u.role AS author_role, u.logo_url AS author_logo,
-         COUNT(v.id) FILTER (WHERE v.choice = 'pour')   AS pour_count,
-         COUNT(v.id) FILTER (WHERE v.choice = 'contre') AS contre_count
-       FROM polls p
-       JOIN users u ON u.id = p.user_id
-       LEFT JOIN votes v ON v.poll_id = p.id
-       WHERE p.status = 'active'
-       GROUP BY p.id, u.name, u.role, u.logo_url
-       ORDER BY p.created_at DESC
-       LIMIT 50`
+      `SELECT id FROM polls WHERE status = 'active' ORDER BY created_at DESC LIMIT 50`
     );
-    res.json({ polls: rows });
+    const polls = await Promise.all(rows.map(r => pollWithResults(r.id)));
+    res.json({ polls: polls.filter(Boolean) });
   } catch (err) {
     console.error('Erreur GET /polls :', err);
     res.status(500).json({ error: 'Erreur serveur, réessaie plus tard.' });
@@ -119,22 +190,64 @@ router.get('/:id', async (req, res) => {
 
 router.post('/:id/vote', requireAuth, async (req, res) => {
   try {
-    const { choice } = req.body || {};
-    if (!['pour', 'contre'].includes(choice)) {
-      return res.status(400).json({ error: 'Le choix doit être "pour" ou "contre".' });
-    }
+    const { choice, optionId } = req.body || {};
 
-    const pollCheck = await pool.query('SELECT status FROM polls WHERE id = $1', [req.params.id]);
-    if (!pollCheck.rows[0]) return res.status(404).json({ error: 'Sondage introuvable.' });
-    if (pollCheck.rows[0].status !== 'active') {
+    const pollCheck = await pool.query(
+      'SELECT id, status, poll_type, security_level, verification_type, closes_at FROM polls WHERE id = $1',
+      [req.params.id]
+    );
+    const poll = pollCheck.rows[0];
+    if (!poll) return res.status(404).json({ error: 'Sondage introuvable.' });
+
+    if (poll.status === 'active' && poll.closes_at && new Date(poll.closes_at) <= new Date()) {
+      await pool.query("UPDATE polls SET status = 'closed' WHERE id = $1", [poll.id]);
+      poll.status = 'closed';
+    }
+    if (poll.status !== 'active') {
       return res.status(409).json({ error: 'Ce sondage est fermé, les votes ne sont plus acceptés.' });
     }
 
+    if (poll.security_level === 'sensible') {
+      if (poll.verification_type === 'strict') {
+        // Vérification propre à CETTE élection (carte de membre) : ignore le badge VoxID global.
+        const { rows: approvedRows } = await pool.query(
+          `SELECT id FROM verification_requests WHERE user_id = $1 AND poll_id = $2 AND status = 'approved'`,
+          [req.user.sub, poll.id]
+        );
+        if (!approvedRows[0]) {
+          return res.status(403).json({
+            error: 'Cette élection nécessite une carte de membre vérifiée pour voter.',
+            code: 'VOXID_REQUIRED'
+          });
+        }
+      } else {
+        const { rows: uRows } = await pool.query('SELECT voxid_verified FROM users WHERE id = $1', [req.user.sub]);
+        if (!uRows[0]?.voxid_verified) {
+          return res.status(403).json({
+            error: 'Cette élection est sensible et nécessite une identité VoxID vérifiée pour voter.',
+            code: 'VOXID_REQUIRED'
+          });
+        }
+      }
+    }
+
+    let insertQuery, insertParams;
+    if (poll.poll_type === 'multi') {
+      if (!optionId) return res.status(400).json({ error: 'Un candidat doit être sélectionné.' });
+      const optCheck = await pool.query('SELECT id FROM poll_options WHERE id = $1 AND poll_id = $2', [optionId, poll.id]);
+      if (!optCheck.rows[0]) return res.status(400).json({ error: 'Candidat invalide pour ce sondage.' });
+      insertQuery = 'INSERT INTO votes (poll_id, user_id, option_id) VALUES ($1, $2, $3)';
+      insertParams = [poll.id, req.user.sub, optionId];
+    } else {
+      if (!['pour', 'contre'].includes(choice)) {
+        return res.status(400).json({ error: 'Le choix doit être "pour" ou "contre".' });
+      }
+      insertQuery = 'INSERT INTO votes (poll_id, user_id, choice) VALUES ($1, $2, $3)';
+      insertParams = [poll.id, req.user.sub, choice];
+    }
+
     try {
-      await pool.query(
-        'INSERT INTO votes (poll_id, user_id, choice) VALUES ($1, $2, $3)',
-        [req.params.id, req.user.sub, choice]
-      );
+      await pool.query(insertQuery, insertParams);
     } catch (err) {
       if (err.code === '23505') {
         return res.status(409).json({ error: 'Tu as déjà voté sur ce sondage.' });
@@ -142,8 +255,8 @@ router.post('/:id/vote', requireAuth, async (req, res) => {
       throw err;
     }
 
-    const poll = await pollWithResults(req.params.id);
-    res.status(201).json({ poll });
+    const result = await pollWithResults(poll.id);
+    res.status(201).json({ poll: result });
   } catch (err) {
     console.error('Erreur POST /polls/:id/vote :', err);
     res.status(500).json({ error: 'Erreur serveur, réessaie plus tard.' });
@@ -189,6 +302,153 @@ router.post('/:id/close', requireAuth, async (req, res) => {
     res.json({ poll });
   } catch (err) {
     console.error('Erreur POST /polls/:id/close :', err);
+    res.status(500).json({ error: 'Erreur serveur, réessaie plus tard.' });
+  }
+});
+
+router.post('/:id/runoff', requireAuth, async (req, res) => {
+  try {
+    const { optionIds, closesAt } = req.body || {};
+    const original = await pollWithResults(req.params.id);
+    if (!original) return res.status(404).json({ error: 'Sondage introuvable.' });
+    if (original.user_id !== req.user.sub) {
+      return res.status(403).json({ error: "Tu n'es pas l'auteur de ce sondage." });
+    }
+    if (original.poll_type !== 'multi') {
+      return res.status(400).json({ error: 'Le second tour est réservé aux élections à plusieurs candidats.' });
+    }
+    if (original.status !== 'closed') {
+      return res.status(409).json({ error: "L'élection doit être fermée avant de lancer un second tour." });
+    }
+
+    const chosenIds = Array.isArray(optionIds) && optionIds.length >= 2
+      ? optionIds
+      : (original.tie ? original.tie.map(o => o.id) : original.options.slice(0, 2).map(o => o.id));
+
+    const chosenOptions = original.options.filter(o => chosenIds.includes(o.id));
+    if (chosenOptions.length < 2) {
+      return res.status(400).json({ error: 'Il faut au moins 2 candidats pour un second tour.' });
+    }
+
+    let closesAtValue = null;
+    if (closesAt) {
+      const d = new Date(closesAt);
+      if (isNaN(d.getTime()) || d <= new Date()) {
+        return res.status(400).json({ error: 'La date de fin doit être une date valide dans le futur.' });
+      }
+      closesAtValue = d.toISOString();
+    }
+
+    let code, inserted;
+    for (let attempt = 0; attempt < 5 && !inserted; attempt++) {
+      code = generateCode();
+      try {
+        const { rows } = await pool.query(
+          `INSERT INTO polls (code, user_id, title, question, category, scope, poll_type, security_level, verification_type, closes_at, runoff_of)
+           VALUES ($1, $2, $3, $4, $5, $6, 'multi', $7, $8, $9, $10)
+           RETURNING id`,
+          [code, req.user.sub, original.title + ' — Second tour', original.question,
+           original.category, original.scope, original.security_level, original.verification_type, closesAtValue, original.id]
+        );
+        inserted = rows[0];
+      } catch (err) {
+        if (err.code !== '23505') throw err;
+      }
+    }
+    if (!inserted) return res.status(500).json({ error: 'Impossible de générer un code unique, réessaie.' });
+
+    for (let i = 0; i < chosenOptions.length; i++) {
+      await pool.query(
+        'INSERT INTO poll_options (poll_id, label, photo_url, display_order) VALUES ($1, $2, $3, $4)',
+        [inserted.id, chosenOptions[i].label, chosenOptions[i].photo_url, i]
+      );
+    }
+
+    const poll = await pollWithResults(inserted.id);
+    res.status(201).json({ poll });
+  } catch (err) {
+    console.error('Erreur POST /polls/:id/runoff :', err);
+    res.status(500).json({ error: 'Erreur serveur, réessaie plus tard.' });
+  }
+});
+
+router.post('/:id/validators', requireAuth, async (req, res) => {
+  try {
+    const { phone, email } = req.body || {};
+    if (!phone && !email) {
+      return res.status(400).json({ error: 'Indique le téléphone ou l\'email de la personne de confiance.' });
+    }
+    const pollRes = await pool.query('SELECT id, user_id FROM polls WHERE id::text = $1 OR code = $1', [req.params.id]);
+    const poll = pollRes.rows[0];
+    if (!poll) return res.status(404).json({ error: 'Sondage introuvable.' });
+    if (poll.user_id !== req.user.sub) {
+      return res.status(403).json({ error: "Tu n'es pas l'organisateur de ce sondage." });
+    }
+
+    const userRes = await pool.query(
+      'SELECT id, name FROM users WHERE phone = $1 OR email = $2',
+      [phone || null, email || null]
+    );
+    const validatorUser = userRes.rows[0];
+    if (!validatorUser) {
+      return res.status(404).json({ error: 'Aucun compte VoxLive trouvé avec ces coordonnées. La personne doit d\'abord s\'inscrire.' });
+    }
+    if (validatorUser.id === req.user.sub) {
+      return res.status(400).json({ error: 'Tu ne peux pas te désigner toi-même comme validateur.' });
+    }
+
+    try {
+      await pool.query(
+        'INSERT INTO poll_validators (poll_id, validator_user_id, added_by) VALUES ($1, $2, $3)',
+        [poll.id, validatorUser.id, req.user.sub]
+      );
+    } catch (err) {
+      if (err.code === '23505') {
+        return res.status(409).json({ error: 'Cette personne est déjà validateur pour ce sondage.' });
+      }
+      throw err;
+    }
+
+    res.status(201).json({ validator: { id: validatorUser.id, name: validatorUser.name } });
+  } catch (err) {
+    console.error('Erreur POST /polls/:id/validators :', err);
+    res.status(500).json({ error: 'Erreur serveur, réessaie plus tard.' });
+  }
+});
+
+router.get('/:id/validators', requireAuth, async (req, res) => {
+  try {
+    const pollRes = await pool.query('SELECT id, user_id FROM polls WHERE id::text = $1 OR code = $1', [req.params.id]);
+    const poll = pollRes.rows[0];
+    if (!poll) return res.status(404).json({ error: 'Sondage introuvable.' });
+    if (poll.user_id !== req.user.sub) {
+      return res.status(403).json({ error: "Tu n'es pas l'organisateur de ce sondage." });
+    }
+    const { rows } = await pool.query(
+      `SELECT u.id, u.name, pv.created_at
+       FROM poll_validators pv JOIN users u ON u.id = pv.validator_user_id
+       WHERE pv.poll_id = $1 ORDER BY pv.created_at ASC`,
+      [poll.id]
+    );
+    res.json({ validators: rows });
+  } catch (err) {
+    console.error('Erreur GET /polls/:id/validators :', err);
+    res.status(500).json({ error: 'Erreur serveur, réessaie plus tard.' });
+  }
+});
+
+router.delete('/:id/validators/:validatorId', requireAuth, async (req, res) => {
+  try {
+    const pollRes = await pool.query('SELECT id, user_id FROM polls WHERE id::text = $1 OR code = $1', [req.params.id]);
+    const poll = pollRes.rows[0];
+    if (!poll) return res.status(404).json({ error: 'Sondage introuvable.' });
+    if (poll.user_id !== req.user.sub) {
+      return res.status(403).json({ error: "Tu n'es pas l'organisateur de ce sondage." });
+    }
+    await pool.query('DELETE FROM poll_validators WHERE poll_id = $1 AND validator_user_id = $2', [poll.id, req.params.validatorId]);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Erreur DELETE /polls/:id/validators/:validatorId :', err);
     res.status(500).json({ error: 'Erreur serveur, réessaie plus tard.' });
   }
 });

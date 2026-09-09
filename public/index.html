@@ -1757,7 +1757,8 @@ function submitPostInner(){
         toast('Ajoute au moins 2 candidats pour une élection.');
         return false;
       }
-    }    if(authToken){
+    }
+    if(authToken){
       createRealPoll(title, question, cat, scope, {
         pollType, securityLevel, verificationType, closesAt,
         options: pollType === 'multi' ? candidateOptions : undefined
@@ -1860,7 +1861,18 @@ function voteOn(id, choice){
       if(err.alreadyVoted){
         votedPolls[id] = choice; // resynchronise l'état local avec le serveur
         saveVotedPolls();
-        renderAll();
+        // Le décompte de votes affiché pouvait rester figé (ex: à 0) car cette branche
+        // ne recevait jamais les vrais chiffres du serveur : on les récupère explicitement.
+        fetch(API_BASE + '/api/polls/' + id)
+          .then(r => r.ok ? r.json() : null)
+          .then(data => {
+            if(!data || !data.poll) return;
+            const updated = apiPollToLocal(data.poll);
+            const idx = polls.findIndex(x => x.id === id);
+            if(idx !== -1) polls[idx] = updated;
+            renderAll();
+          })
+          .catch(() => renderAll());
       }
       if(err.code === 'VOXID_REQUIRED') openVoxidSubmitModal(id);
     });
@@ -2634,7 +2646,16 @@ function voteOnOption(pollId, optionId){
     if(err.alreadyVoted){
       votedPolls[pollId] = optionId;
       saveVotedPolls();
-      renderAll();
+      fetch(API_BASE + '/api/polls/' + pollId)
+        .then(r => r.ok ? r.json() : null)
+        .then(data => {
+          if(!data || !data.poll) return;
+          const updated = apiPollToLocal(data.poll);
+          const idx = polls.findIndex(x => x.id === pollId);
+          if(idx !== -1) polls[idx] = updated;
+          renderAll();
+        })
+        .catch(() => renderAll());
     }
     if(err.code === 'VOXID_REQUIRED') openVoxidSubmitModal(pollId);
   });
