@@ -2287,15 +2287,40 @@ function submitVoxidRequest(){
     })
   })
   .then(async r => {
-    const data = await r.json();
+    const text = await r.text();
+    let data;
+    try { data = JSON.parse(text); } catch { throw new Error('Le serveur met du temps à répondre, réessaie dans une minute.'); }
     if(!r.ok) throw new Error(data.error || 'Erreur lors de l\'envoi.');
     return data;
   })
   .then((data) => {
-    toast(data.autoValidated ? '✅ Identité vérifiée automatiquement, tu peux voter !' : 'Demande envoyée ! Tu pourras voter dès qu\'un validateur t\'aura approuvé.');
+    toast('Demande envoyée ! Analyse en cours...');
     closeVoxidSubmitModal();
+    if(data.request && data.request.id) pollVoxidStatus(data.request.id);
   })
   .catch(err => toast('⚠️ ' + err.message));
+}
+/**
+ * Interroge périodiquement le statut d'une demande VoxID pendant que l'auto-validation
+ * (OCR + détection de visage) tourne côté serveur, sans bloquer l'utilisateur.
+ */
+function pollVoxidStatus(requestId, attempt = 0){
+  if(attempt >= 15) return; // ~45s max, au-delà on laisse le flux normal (file d'attente humaine) prendre le relais
+  setTimeout(() => {
+    fetch(API_BASE + '/api/voxid/' + requestId + '/status', {
+      headers: {'Authorization':'Bearer ' + authToken}
+    })
+    .then(r => r.ok ? r.json() : null)
+    .then(data => {
+      if(!data || !data.request) return;
+      if(data.request.status === 'approved' && data.request.auto_validated){
+        toast('✅ Identité vérifiée automatiquement, tu peux voter !');
+      } else if(data.request.status === 'pending'){
+        pollVoxidStatus(requestId, attempt + 1);
+      }
+    })
+    .catch(() => {});
+  }, 3000);
 }
 
 function addValidator(){
