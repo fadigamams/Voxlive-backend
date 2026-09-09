@@ -2412,8 +2412,12 @@ function loadVoxidQueue(){
       return;
     }
     const req = data.queue[0]; // une seule à la fois — swipe-like
+    const dupWarning = req.flagged_duplicate
+      ? `<div style="background:#3b1010;border:1px solid #7f1d1d;color:#fca5a5;padding:8px 10px;border-radius:8px;font-size:12px;margin-bottom:10px;">⚠️ Doublon possible : cette pièce (ou un numéro très proche) semble déjà utilisée sur un autre compte. Vérifie attentivement avant de valider.</div>`
+      : '';
     box.innerHTML = `
       <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">Élection : ${req.poll_title} (${req.poll_code}) — ${data.queue.length} en attente</div>
+      ${dupWarning}
       <img src="${req.document_photo_url}" style="width:100%;max-height:260px;object-fit:contain;border-radius:10px;background:#0a1120;margin-bottom:10px;">
       <div style="font-weight:700;font-size:16px;margin-bottom:12px;">${req.full_name_submitted}</div>
       <div style="display:flex;gap:10px;">

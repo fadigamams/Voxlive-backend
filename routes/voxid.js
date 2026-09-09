@@ -128,9 +128,33 @@ async function runAutoVerifyInBackground({ requestId, fullName, documentPhotoDat
     const auto = await autoVerify({ fullName, documentPhotoDataUrl });
 
     await pool.query(
-      `UPDATE verification_requests SET confidence = $1, auto_reason = $2 WHERE id = $3`,
-      [auto.confidence, auto.reason, requestId]
+      `UPDATE verification_requests SET confidence = $1, auto_reason = $2, document_number_hash = $3 WHERE id = $4`,
+      [auto.confidence, auto.reason, auto.documentNumberHash, requestId]
     );
+
+    // ---------- Détection de doublon de pièce (anti multi-comptes) ----------
+    // Même numéro de pièce déjà utilisé par un AUTRE compte (approuvé ou en attente) : jamais
+    // d'auto-approbation, la demande reste pour un validateur humain avec un signalement visible.
+    if (auto.documentNumberHash) {
+      const { rows: dupRows } = await pool.query(
+        `SELECT DISTINCT user_id FROM verification_requests
+         WHERE document_number_hash = $1 AND user_id <> $2 AND status IN ('approved', 'pending')`,
+        [auto.documentNumberHash, userId]
+      );
+      if (dupRows.length > 0) {
+        const { rows: pollRows } = await pool.query('SELECT poll_id FROM verification_requests WHERE id = $1', [requestId]);
+        await pool.query(
+          `UPDATE verification_requests SET flagged_duplicate = TRUE WHERE id = $1`,
+          [requestId]
+        );
+        await pool.query(
+          `INSERT INTO fraud_signals (poll_id, signal_type, severity, details)
+           VALUES ($1, 'duplicate_document_number', 4, $2)`,
+          [pollRows[0]?.poll_id, JSON.stringify({ request_id: requestId, matched_user_ids: dupRows.map(r => r.user_id) })]
+        );
+        return; // reste en file d'attente humaine, jamais auto-approuvé en cas de doublon
+      }
+    }
 
     if (!auto.autoApprove) return; // reste en file d'attente humaine, rien d'autre à faire
 
@@ -182,13 +206,13 @@ router.get('/queue', requireAuth, async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT vr.id, vr.full_name_submitted, vr.document_photo_url, vr.created_at,
-              vr.verification_type, vr.membership_card_number, vr.confidence, vr.auto_reason,
+              vr.verification_type, vr.membership_card_number, vr.confidence, vr.auto_reason, vr.flagged_duplicate,
               p.title AS poll_title, p.code AS poll_code
        FROM verification_requests vr
        JOIN polls p ON p.id = vr.poll_id
        WHERE vr.status = 'pending'
          AND (vr.assigned_validator = $1 OR p.user_id = $1)
-       ORDER BY vr.created_at ASC
+       ORDER BY vr.flagged_duplicate DESC, vr.created_at ASC
        LIMIT 20`,
       [req.user.sub]
     );
