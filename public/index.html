@@ -588,6 +588,8 @@
     <div class="field">
       <label id="voxid-photo-label">Photo d'une pièce avec nom + photo (CNI, carte d'électeur, permis, passeport...)</label>
       <input type="file" id="in-voxid-photo" accept="image/*" onchange="onVoxidPhotoChange(event)">
+      <button type="button" class="qc-btn" style="margin-top:6px;" onclick="document.getElementById('in-voxid-photo-camera').click()">📷 Prendre une photo</button>
+      <input type="file" id="in-voxid-photo-camera" accept="image/*" capture="environment" style="display:none;" onchange="onVoxidPhotoChange(event)">
       <img id="voxid-photo-preview" style="display:none;width:100%;max-height:200px;object-fit:contain;border-radius:10px;margin-top:8px;background:#0a1120;">
     </div>
     <button class="btn btn-green" style="width:100%;" onclick="submitVoxidRequest()">Envoyer pour validation</button>
@@ -1675,14 +1677,33 @@ function submitPost(e){
   }
 }
 let candidateCount = 0;
-function addCandidateField(value){
+function addCandidateField(value, photoDataUrl){
   const wrap = document.getElementById('candidate-list');
   const idx = candidateCount++;
   const row = document.createElement('div');
-  row.style.cssText = 'display:flex;gap:8px;margin-bottom:8px;';
-  row.innerHTML = `<input type="text" class="candidate-input" placeholder="Nom du candidat ${idx+1}" value="${value ? value.replace(/"/g,'&quot;') : ''}" style="flex:1;">
+  row.className = 'candidate-row';
+  row.style.cssText = 'display:flex;gap:8px;margin-bottom:8px;align-items:center;';
+  row.innerHTML = `
+    <div class="candidate-photo-btn" style="width:44px;height:44px;border-radius:8px;background:#1a2540;border:1px solid #334155;display:flex;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden;cursor:pointer;" onclick="this.nextElementSibling.click()">
+      <img class="candidate-photo-preview" src="${photoDataUrl || ''}" style="width:100%;height:100%;object-fit:cover;display:${photoDataUrl ? 'block' : 'none'};">
+      <span class="candidate-photo-placeholder" style="display:${photoDataUrl ? 'none' : 'block'};font-size:18px;">📷</span>
+    </div>
+    <input type="file" accept="image/*" style="display:none;" onchange="onCandidatePhotoChange(event)">
+    <input type="text" class="candidate-input" placeholder="Nom du candidat ${idx+1}" value="${value ? value.replace(/"/g,'&quot;') : ''}" style="flex:1;">
     <button type="button" class="qc-btn" style="padding:8px 12px;" onclick="this.parentElement.remove()">✕</button>`;
   wrap.appendChild(row);
+}
+function onCandidatePhotoChange(e){
+  const file = e.target.files[0];
+  if(!file) return;
+  const row = e.target.closest('.candidate-row');
+  compressImageFile(file, 500, 0.75).then(dataUrl => {
+    const img = row.querySelector('.candidate-photo-preview');
+    const placeholder = row.querySelector('.candidate-photo-placeholder');
+    img.src = dataUrl;
+    img.style.display = 'block';
+    placeholder.style.display = 'none';
+  }).catch(() => toast('Impossible de lire cette photo, réessaie.'));
 }
 function onPollTypeChange(){
   const isMulti = document.getElementById('in-poll-type').value === 'multi';
@@ -1692,7 +1713,12 @@ function onPollTypeChange(){
   }
 }
 function getCandidateValues(){
-  return Array.from(document.querySelectorAll('.candidate-input')).map(i=>i.value.trim()).filter(Boolean);
+  return Array.from(document.querySelectorAll('.candidate-row')).map(row => {
+    const label = row.querySelector('.candidate-input').value.trim();
+    const img = row.querySelector('.candidate-photo-preview');
+    const photoDataUrl = img && img.style.display !== 'none' ? img.src : null;
+    return { label, photoDataUrl };
+  }).filter(c => c.label);
 }
 function onSecurityLevelChange(){
   const isSensible = document.getElementById('in-security-level').value === 'sensible';
@@ -1731,8 +1757,7 @@ function submitPostInner(){
         toast('Ajoute au moins 2 candidats pour une élection.');
         return false;
       }
-    }
-    if(authToken){
+    }    if(authToken){
       createRealPoll(title, question, cat, scope, {
         pollType, securityLevel, verificationType, closesAt,
         options: pollType === 'multi' ? candidateOptions : undefined
@@ -2671,7 +2696,7 @@ function renderFeaturedMulti(p){
     resultsEl.innerHTML = `<div style="font-size:11px;color:var(--muted);margin-bottom:8px;">🏆 RÉSULTATS FINAUX · ${fmt(p.totalVotes)} votes exprimés</div>` +
       winnerLine +
       options.map(o => `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--card-border);">
-        <span>${medals[o.rank-1] || '#'+o.rank} ${o.label}</span>
+        <span style="display:flex;align-items:center;">${o.photo_url ? `<img src="${o.photo_url}" style="width:28px;height:28px;border-radius:6px;object-fit:cover;margin-right:8px;">` : ''}${medals[o.rank-1] || '#'+o.rank} ${o.label}</span>
         <b>${fmt(o.votes)} (${o.percent}%)</b>
       </div>`).join('');
   } else {
@@ -2679,7 +2704,8 @@ function renderFeaturedMulti(p){
     listEl.style.display = '';
     listEl.innerHTML = options.map(o => {
       const chosen = votedPolls[p.id] === o.id;
-      return `<button class="vote-btn" style="background:${chosen?'var(--green)':'#1a2540'};border:1px solid ${chosen?'var(--green)':'#334155'};color:#fff;margin-bottom:8px;" ${already?'disabled':''} onclick="voteOnOption('${p.id}','${o.id}')">${o.label}${o.votes!=null && already ? ' — '+fmt(o.votes)+' votes' : ''}</button>`;
+      const photo = o.photo_url ? `<img src="${o.photo_url}" style="width:32px;height:32px;border-radius:6px;object-fit:cover;margin-right:8px;vertical-align:middle;">` : '';
+      return `<button class="vote-btn" style="background:${chosen?'var(--green)':'#1a2540'};border:1px solid ${chosen?'var(--green)':'#334155'};color:#fff;margin-bottom:8px;display:flex;align-items:center;" ${already?'disabled':''} onclick="voteOnOption('${p.id}','${o.id}')">${photo}<span>${o.label}${o.votes!=null && already ? ' — '+fmt(o.votes)+' votes' : ''}</span></button>`;
     }).join('');
     flagEl.innerHTML = votedFlagHtml();
     flagEl.classList.toggle('show', already);
