@@ -9,7 +9,7 @@ const pollsRoutes = require('./routes/polls');
 const app = express();
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 
 // Freine les attaques par force brute sur la connexion/inscription
 const authLimiter = rateLimit({
