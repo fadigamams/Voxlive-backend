@@ -972,6 +972,9 @@
             <button onclick="setScope('internationale', event)">Internationales</button>
           </div>
         </div>
+        <div class="field" style="margin-bottom:14px;">
+          <input type="text" id="in-poll-search" placeholder="🔍 Rechercher un sondage, une élection, un candidat..." oninput="renderTrendGrid('trending-grid-full', true)">
+        </div>
         <div class="trend-grid wide" id="trending-grid-full"></div>
       </section>
     </section>
@@ -1307,6 +1310,30 @@ function total(p){ return p.pour + p.contre; }
 function pourPct(p){ const t=total(p); return t>0 ? p.pour/t*100 : 50; }
 function contrePct(p){ const t=total(p); return t>0 ? p.contre/t*100 : 50; }
 function fmt(n){ return Math.round(n).toLocaleString('fr-FR'); }
+/**
+ * Nombre de votes réel d'un sondage, quel que soit son type (binaire pour/contre
+ * ou multi-candidats) — total(p) seul renvoie toujours 0 pour un sondage multi.
+ */
+function pollVoteCount(p){ return p.pollType === 'multi' ? (p.totalVotes || 0) : total(p); }
+/**
+ * Barres de résultat réutilisables pour une carte de sondage : POUR/CONTRE pour un
+ * binaire, ou les 2 candidats en tête pour un multi-candidats (avec photo si dispo).
+ */
+function pollMiniBarsHtml(p){
+  if(p.pollType === 'multi'){
+    const opts = (p.options || []).slice().sort((a,b)=>(b.votes||0)-(a.votes||0)).slice(0,2);
+    const t = p.totalVotes || 0;
+    if(opts.length === 0) return `<div style="font-size:11.5px;color:var(--muted);">Aucun candidat pour le moment.</div>`;
+    return opts.map(o=>{
+      const pct = t>0 ? Math.round((o.votes||0)/t*100) : 0;
+      const photo = o.photo_url ? `<img src="${o.photo_url}" style="width:18px;height:18px;border-radius:4px;object-fit:cover;margin-right:5px;vertical-align:middle;">` : '';
+      return `<div class="bar-row"><span class="lab" style="display:flex;align-items:center;">${photo}${o.label}</span><div class="bar-track"><div class="bar-fill pour" style="width:${pct}%"></div></div><span class="pctv">${pct}%</span></div>`;
+    }).join('');
+  }
+  const pc = Math.round(pourPct(p)), cc = 100-pc;
+  return `<div class="bar-row"><span class="lab">POUR</span><div class="bar-track"><div class="bar-fill pour" style="width:${pc}%"></div></div><span class="pctv">${pc}%</span></div>
+    <div class="bar-row"><span class="lab">CONTRE</span><div class="bar-track"><div class="bar-fill contre" style="width:${cc}%"></div></div><span class="pctv">${cc}%</span></div>`;
+}
 
 /* ---------- TOAST ---------- */
 let toastTimer;
@@ -2615,18 +2642,25 @@ function pollsForScope(){
 }
 function renderTrendGrid(elId, full){
   const el = document.getElementById(elId);
-  const list = full ? pollsForScope() : polls.filter(p=>p.hasPoll).sort((a,b)=>total(b)-total(a)).slice(0,5);
-  if(list.length === 0){ el.innerHTML = `<div class="empty-note">Aucun sondage dans cette catégorie pour le moment.</div>`; return; }
+  let list = full ? pollsForScope() : polls.filter(p=>p.hasPoll).sort((a,b)=>pollVoteCount(b)-pollVoteCount(a)).slice(0,5);
+  const searchEl = document.getElementById('in-poll-search');
+  const q = searchEl ? searchEl.value.trim().toLowerCase() : '';
+  if(q){
+    list = list.filter(p => {
+      const inTitle = (p.title||'').toLowerCase().includes(q) || (p.question||'').toLowerCase().includes(q) || (p.cat||'').toLowerCase().includes(q);
+      const inCandidates = p.pollType === 'multi' && (p.options||[]).some(o => (o.label||'').toLowerCase().includes(q));
+      return inTitle || inCandidates;
+    });
+  }
+  if(list.length === 0){ el.innerHTML = `<div class="empty-note">${q ? 'Aucun résultat pour « '+searchEl.value.trim()+' ».' : 'Aucun sondage dans cette catégorie pour le moment.'}</div>`; return; }
   el.innerHTML = list.map((p,i)=>{
-    const pc = Math.round(pourPct(p)), cc = 100-pc;
     const isLive = p.id === featuredId;
     const badge = p.author ? ` · ${roleLabel[p.author.role]||''} ${p.author.name}` : '';
     return `<button class="tcard ${isLive?'is-live':''}" onclick="selectPoll('${p.id}')">
       <div class="rank">${isLive ? '● LIVE' : '#'+(i+1)}</div>
       <div class="q">${p.title}</div>
-      <div class="n">${fmt(total(p))} votants${badge}</div>
-      <div class="bar-row"><span class="lab">POUR</span><div class="bar-track"><div class="bar-fill pour" style="width:${pc}%"></div></div><span class="pctv">${pc}%</span></div>
-      <div class="bar-row"><span class="lab">CONTRE</span><div class="bar-track"><div class="bar-fill contre" style="width:${cc}%"></div></div><span class="pctv">${cc}%</span></div>
+      <div class="n">${fmt(pollVoteCount(p))} votants${badge}</div>
+      ${pollMiniBarsHtml(p)}
     </button>`;
   }).join('');
 }
@@ -2635,13 +2669,11 @@ function renderMesSondages(){
   document.getElementById('mes-empty').style.display = mine.length ? 'none' : 'block';
   const el = document.getElementById('mes-sondages-grid');
   el.innerHTML = mine.map(p=>{
-    const pc = Math.round(pourPct(p)), cc = 100-pc;
     return `<button class="tcard ${p.id===featuredId?'is-live':''}" onclick="selectPoll('${p.id}')">
       <div class="rank">${p.id===featuredId?'● LIVE':'●'}</div>
       <div class="q">${p.title}</div>
-      <div class="n">${fmt(total(p))} votants · ${p.cat}</div>
-      <div class="bar-row"><span class="lab">POUR</span><div class="bar-track"><div class="bar-fill pour" style="width:${pc}%"></div></div><span class="pctv">${pc}%</span></div>
-      <div class="bar-row"><span class="lab">CONTRE</span><div class="bar-track"><div class="bar-fill contre" style="width:${cc}%"></div></div><span class="pctv">${cc}%</span></div>
+      <div class="n">${fmt(pollVoteCount(p))} votants · ${p.cat}</div>
+      ${pollMiniBarsHtml(p)}
     </button>`;
   }).join('');
 }
