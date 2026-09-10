@@ -1013,7 +1013,7 @@
             <div class="field"><label>Ville</label><input type="text" id="ev-city" placeholder="Ex : Abidjan"></div>
             <div class="field"><label>Date</label><input type="date" id="ev-date"></div>
           </div>
-          <button class="btn btn-green" onclick="createEvent()">Générer l'événement + QR Code</button>
+          <button class="btn btn-green" onclick="createVoxEvent()">Générer l'événement + QR Code</button>
         </div>
       </section>
     </section>
@@ -2154,7 +2154,7 @@ function renderInternational(){
    VOXLIVE EVENTS
    ========================================================= */
 let events = [];
-function createEvent(){
+function createVoxEvent(){
   const name = document.getElementById('ev-name').value.trim();
   const type = document.getElementById('ev-type').value;
   const city = document.getElementById('ev-city').value.trim() || 'Abidjan';
