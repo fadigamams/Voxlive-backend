@@ -2001,15 +2001,68 @@ function subscribeVoxLive(){
 }
 
 /* ---------- MODE TV (VoxLive Live Screen) ---------- */
+let tvRemoteRefreshTimer = null;
+let tvRemoteRefreshBusy = false;
+
+function closeTvMode(){
+  document.getElementById('tvMode').classList.remove('open');
+  document.body.classList.remove('splashing');
+  if(tvRemoteRefreshTimer){
+    clearInterval(tvRemoteRefreshTimer);
+    tvRemoteRefreshTimer = null;
+  }
+}
+
+function startTvRemoteRefresh(){
+  if(tvRemoteRefreshTimer) clearInterval(tvRemoteRefreshTimer);
+  // Actualise le sondage affiché à l'écran TV toutes les 3 secondes.
+  tvRemoteRefreshTimer = setInterval(refreshTvRemotePoll, 3000);
+  refreshTvRemotePoll();
+}
+
+function refreshTvRemotePoll(){
+  if(tvRemoteRefreshBusy) return;
+  if(!document.getElementById('tvMode').classList.contains('open')) return;
+
+  const p = featured();
+  if(!p || !p.remote) return;
+
+  tvRemoteRefreshBusy = true;
+  fetch(API_BASE + '/api/polls/' + encodeURIComponent(p.id), {
+    cache: 'no-store',
+    headers: {'Accept':'application/json'}
+  })
+    .then(async r => {
+      if(!r.ok) throw new Error('Impossible de récupérer le sondage en direct.');
+      return r.json();
+    })
+    .then(data => {
+      const serverPoll = data.poll || data;
+      if(!serverPoll || !serverPoll.id) return;
+
+      const updated = apiPollToLocal(serverPoll);
+      const idx = polls.findIndex(x => x.id === p.id);
+      if(idx !== -1){
+        polls[idx] = updated;
+      }
+      // Mise à jour immédiate du petit écran TV sans recréer toute l'interface.
+      renderTvMode();
+    })
+    .catch(() => {
+      // On conserve la dernière valeur connue : pas de faux résultat à l'écran.
+    })
+    .finally(() => {
+      tvRemoteRefreshBusy = false;
+    });
+}
+
 function openTvMode(){
   document.getElementById('tvMode').classList.add('open');
   document.body.classList.add('splashing');
   renderTvMode();
+  startTvRemoteRefresh();
 }
-function closeTvMode(){
-  document.getElementById('tvMode').classList.remove('open');
-  document.body.classList.remove('splashing');
-}
+
 function renderTvMode(){
   if(!document.getElementById('tvMode').classList.contains('open')) return;
   const p = featured();
@@ -2019,12 +2072,17 @@ function renderTvMode(){
     document.getElementById('tv-bars-binaire').style.display = 'none';
     const box = document.getElementById('tv-bars-multi');
     box.style.display = '';
-    const options = (p.options || []).slice().sort((a,b)=>b.votes-a.votes);
-    box.innerHTML = options.map(o => `<div class="tv-bar-row">
+    const options = (p.options || []).slice().sort((a,b)=>(b.votes||0)-(a.votes||0));
+    const totalVotes = Number(p.totalVotes || options.reduce((s,o)=>s + Number(o.votes||0), 0));
+    box.innerHTML = options.map(o => {
+      const pct = totalVotes > 0 ? Math.round((Number(o.votes||0) / totalVotes) * 100) : 0;
+      return `<div class="tv-bar-row">
         <div class="tv-lab" style="color:#fff;">${o.label}</div>
-        <div class="tv-track"><div class="tv-fill pour" style="width:${o.percent}%"></div></div>
-        <div class="tv-pct">${o.percent}%</div>
-      </div>`).join('');
+        <div class="tv-track"><div class="tv-fill pour" style="width:${pct}%"></div></div>
+        <div class="tv-pct">${pct}%</div>
+      </div>`;
+    }).join('');
+    p.totalVotes = totalVotes;
     document.getElementById('tv-total').textContent = fmt(p.totalVotes || 0);
   } else {
     document.getElementById('tv-bars-binaire').style.display = '';
