@@ -71,6 +71,7 @@ async function maybeAutoClose(poll) {
 
 const FREE_POLL_LIMIT = 2; // nombre de sondages réels gratuits par compte
 const FREE_MULTI_OPTION_LIMIT = 4; // nombre de candidats max en gratuit pour une élection multi
+const PAID_MULTI_OPTION_LIMIT = 20; // nombre de candidats max pour un compte payant (ex : concours Miss, élections à grand nombre de candidats)
 
 router.post('/', requireAuth, async (req, res) => {
   try {
@@ -113,10 +114,15 @@ router.post('/', requireAuth, async (req, res) => {
       }
       if (type === 'multi' && cleanOptions.length > FREE_MULTI_OPTION_LIMIT) {
         return res.status(402).json({
-          error: `Le plan gratuit limite les élections à ${FREE_MULTI_OPTION_LIMIT} candidats. Passe à un abonnement supérieur pour en ajouter davantage.`,
+          error: `Le plan gratuit limite les élections à ${FREE_MULTI_OPTION_LIMIT} candidats. Passe à un abonnement supérieur pour en ajouter davantage (jusqu'à ${PAID_MULTI_OPTION_LIMIT}).`,
           code: 'FREE_LIMIT_REACHED'
         });
       }
+    } else if (type === 'multi' && cleanOptions.length > PAID_MULTI_OPTION_LIMIT) {
+      return res.status(402).json({
+        error: `Les élections sont limitées à ${PAID_MULTI_OPTION_LIMIT} candidats maximum, même sur les plans payants.`,
+        code: 'PAID_LIMIT_REACHED'
+      });
     }
 
     let closesAtValue = null;
