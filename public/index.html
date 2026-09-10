@@ -601,6 +601,18 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="qrModalOverlay" onclick="if(event.target===this) closeQrModal();">
+  <div class="modal">
+    <div class="modal-head"><h2>📱 QR Code du sondage</h2><button class="close-x" onclick="closeQrModal()">✕</button></div>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:12px;">Scanne ce code pour ouvrir directement ce sondage et voter.</p>
+    <div style="text-align:center;">
+      <img id="qrModalImg" style="width:220px;height:220px;background:#fff;border-radius:10px;padding:8px;" src="">
+    </div>
+    <p id="qrModalUrl" style="font-size:11px;color:var(--muted);word-break:break-all;margin:10px 0;text-align:center;"></p>
+    <button class="btn btn-green" style="width:100%;" onclick="sharePoll()">↗ Partager le lien</button>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this) closeModal();">
   <div class="modal">
     <div class="modal-head"><h2>Publier</h2><button class="close-x" onclick="closeModal()">✕</button></div>
@@ -867,6 +879,7 @@
             <h3><span class="live-dot"></span>SONDAGE EN DIRECT</h3>
             <div style="display:flex; gap:10px; align-items:center;">
               <button class="share-link" onclick="openTvMode()">📺 Mode TV</button>
+              <button class="share-link" onclick="showPollQR()">📱 QR Code</button>
               <button class="share-link" onclick="sharePoll()">↗ Partager</button>
             </div>
           </div>
@@ -1927,6 +1940,17 @@ function selectPoll(id){
 function pollShareUrl(p){
   return `${location.origin}${location.pathname}?p=${encodeURIComponent(p.code)}`;
 }
+function showPollQR(){
+  const p = featured();
+  const url = pollShareUrl(p);
+  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&bgcolor=ffffff&data=${encodeURIComponent(url)}`;
+  document.getElementById('qrModalImg').src = qrUrl;
+  document.getElementById('qrModalUrl').textContent = url;
+  document.getElementById('qrModalOverlay').classList.add('open');
+}
+function closeQrModal(){
+  document.getElementById('qrModalOverlay').classList.remove('open');
+}
 function sharePoll(){
   const p = featured();
   shareCount++;
@@ -2271,7 +2295,7 @@ function renderDashboard(){
   const top = [...mine].sort((a,b)=>total(b)-total(a)).slice(0,5);
   document.getElementById('dash-top-table').innerHTML = top.map(p=>{
     const eng = Math.min(99, Math.round(total(p)/2000*100));
-    return `<tr><td>${p.title}</td><td>${fmt(total(p))}</td><td>${eng}%</td></tr>`;
+    return `<tr onclick="selectPoll('${p.id}')" style="cursor:pointer;"><td>${p.title}</td><td>${fmt(total(p))}</td><td>${eng}%</td></tr>`;
   }).join('');
 
   const score = Math.min(999, 500 + Math.min(300, mine.length*20) + Math.min(150, Object.keys(votedPolls).length*15) + Math.min(50, shareCount*10));
