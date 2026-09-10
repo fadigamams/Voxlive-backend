@@ -855,8 +855,8 @@
         <div class="phone">
           <div class="status"><span id="phone-clock">9:41</span><span>●●●</span></div>
           <div style="display:flex;justify-content:space-between;align-items:center;">
-            <span class="ptitle">Sondage en direct</span>
-            <span class="badge-live">● LIVE</span>
+            <span class="ptitle" id="ptitle-label">Sondage en direct</span>
+            <span class="badge-live" id="badge-live-label">● LIVE</span>
           </div>
           <div class="pquestion" id="phone-question">Faut-il renforcer l'entrepreneuriat à l'école ?</div>
           <button class="vote-btn pour" id="phone-btn-pour" onclick="castVote('pour')">POUR 👍<span id="pour-live-pct">63%</span></button>
@@ -1303,6 +1303,29 @@ let activityExpanded = false;
 function mkPoll(id, code, title, cat, scope, pour, contre, createdByUser){
   return { id, code, title, cat, scope, pour, contre, createdByUser, createdAt: Date.now(),
     hasPoll:true, isMediaPost:false, postType:'sondage', media:null, caption:'', author:null };
+}
+/**
+ * Affiche clairement si le sondage en vedette est réel (serveur, partagé avec tout le
+ * monde) ou une démonstration locale (jamais envoyée au serveur, votes visibles uniquement
+ * dans CE navigateur). Sans ce badge, les deux cas sont visuellement identiques — trompeur.
+ */
+function setLiveBadge(p){
+  const label = document.getElementById('ptitle-label');
+  const badge = document.getElementById('badge-live-label');
+  if(!label || !badge) return;
+  if(p && p.remote){
+    label.textContent = 'Sondage en direct';
+    badge.textContent = '● LIVE';
+    badge.style.background = '';
+    badge.style.color = '';
+    badge.title = 'Sondage réel, enregistré sur le serveur et partagé avec tous les utilisateurs.';
+  } else {
+    label.textContent = 'Aperçu local';
+    badge.textContent = '🧪 DÉMO — non partagé';
+    badge.style.background = '#5b4400';
+    badge.style.color = '#ffd166';
+    badge.title = 'Sondage de démonstration : ces votes restent uniquement dans ce navigateur, jamais envoyés au serveur ni visibles par les autres utilisateurs.';
+  }
 }
 function findPoll(id){ return polls.find(p=>p.id===id); }
 function featured(){ return findPoll(featuredId); }
@@ -2923,6 +2946,7 @@ function launchRunoff(pollId){
 }
 
 function renderFeaturedMulti(p){
+  setLiveBadge(p);
   document.getElementById('phone-btn-pour').style.display = 'none';
   document.getElementById('phone-btn-contre').style.display = 'none';
   document.getElementById('voteCountBlock').style.display = 'none';
@@ -3004,6 +3028,7 @@ function votedFlagHtml(){
 
 function renderFeatured(){
   const p = featured();
+  setLiveBadge(p);
 
   if(p.remote && p.pollType === 'multi'){
     renderFeaturedMulti(p);
