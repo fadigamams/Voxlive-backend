@@ -689,7 +689,7 @@
           <label>Catégorie</label>
           <select id="in-cat">
             <option>Éducation</option><option>Société</option><option>Économie</option>
-            <option>Transport</option><option>Numérique</option><option>Santé</option>
+            <option>Transport</option><option>Numérique</option><option>Santé</option><option>Concours</option>
           </select>
         </div>
         <div class="field">
@@ -1397,7 +1397,12 @@ function createRealPoll(title, question, category, scope, extra){
     featuredId = p.id;
     closeModal();
     toast('Sondage réel créé et mis en direct !');
-    go('accueil');
+    if(pendingEventQR){
+      pendingEventQR = false;
+      showEventQR(p);
+    } else {
+      go('accueil');
+    }
     renderAll();
   })
   .catch(err => {
@@ -1550,7 +1555,7 @@ function go(view){
   if(view === 'medias') renderMediaFeed('media-feed-full');
   if(view === 'afrique') renderAfrica();
   if(view === 'international') renderInternational();
-  if(view === 'events') renderEvents();
+  if(view === 'events'){} // le contenu se met à jour lors de la création réussie d'un sondage-événement
   if(view === 'profil') renderDashboard();
   if(view === 'tarifs') renderPaymentGrid();
   if(view === 'voxid') renderVoxidView();
@@ -2153,32 +2158,42 @@ function renderInternational(){
 /* =========================================================
    VOXLIVE EVENTS
    ========================================================= */
-let events = [];
+let pendingEventQR = false;
 function createVoxEvent(){
   const name = document.getElementById('ev-name').value.trim();
   const type = document.getElementById('ev-type').value;
   const city = document.getElementById('ev-city').value.trim() || 'Abidjan';
-  const date = document.getElementById('ev-date').value;
   if(!name){ toast('Ajoutez un nom d\'événement.'); return; }
-  const year = date ? date.slice(0,4) : new Date().getFullYear();
-  const code = `VXL-EVENT-${year}-${city.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/[^A-Z]/g,'')}`;
-  events.unshift({id:'ev'+Date.now(), name, type, city, date, code});
-  document.getElementById('ev-name').value=''; document.getElementById('ev-city').value=''; document.getElementById('ev-date').value='';
-  toast('Événement créé — code généré !');
-  renderEvents();
+  if(!authToken){
+    toast('Connecte-toi pour créer un événement réel avec QR Code.');
+    openAuthModal();
+    return;
+  }
+  // Un "événement" est en réalité un vrai sondage : on ouvre le formulaire de création réel,
+  // pré-rempli avec les infos de l'événement, et le QR Code final pointera vers CE sondage réel.
+  openModal('sondage');
+  document.getElementById('in-title').value = name;
+  document.getElementById('in-question').value = `Qui mérite de gagner : ${name} ?`;
+  document.getElementById('in-cat').value = 'Concours';
+  document.getElementById('in-poll-type').value = 'multi';
+  onPollTypeChange();
+  toast(`Ajoute les candidats de "${name}" ci-dessous, puis clique sur "Créer le sondage" — ton QR Code sera généré juste après.`);
+  pendingEventQR = true;
+  document.getElementById('grp-candidates').scrollIntoView({behavior:'smooth'});
 }
-function renderEvents(){
+function showEventQR(p){
+  const url = pollShareUrl(p);
+  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&bgcolor=ffffff&data=${encodeURIComponent(url)}`;
   const el = document.getElementById('events-grid');
-  document.getElementById('events-empty').style.display = events.length ? 'none' : 'block';
-  el.innerHTML = events.map(ev=>{
-    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&bgcolor=ffffff&data=${encodeURIComponent('https://voxlive.africa/event/'+ev.code)}`;
-    return `<div class="event-card">
-      <img class="event-qr" src="${qrUrl}" alt="QR ${ev.code}">
-      <div style="font-weight:700;font-size:14px;">${ev.name}</div>
-      <div style="font-size:11.5px;color:var(--muted);">${ev.type} · ${ev.city}${ev.date?' · '+ev.date:''}</div>
-      <div class="event-code">${ev.code}</div>
-    </div>`;
-  }).join('');
+  document.getElementById('events-empty').style.display = 'none';
+  el.insertAdjacentHTML('afterbegin', `<div class="event-card">
+      <img class="event-qr" src="${qrUrl}" alt="QR ${p.code}">
+      <div style="font-weight:700;font-size:14px;">${p.title}</div>
+      <div style="font-size:11.5px;color:var(--muted);">Sondage réel · code ${p.code}</div>
+      <div class="event-code">${p.code}</div>
+      <div style="font-size:10.5px;color:var(--muted);margin-top:4px;word-break:break-all;">${url}</div>
+    </div>`);
+  go('events');
 }
 
 /* =========================================================
