@@ -1167,7 +1167,7 @@
         <h3>👥 Validateurs de mes élections</h3>
         <p style="font-size:11.5px;color:var(--muted);">Désigne une personne de confiance (déjà inscrite sur VoxLive) pour valider les identités sur tes élections sensibles.</p>
         <div class="field">
-          <label>Code ou ID de l'élection</label>
+          <label>Code de l'élection (pas ton VoxID)</label>
           <input type="text" id="in-validator-poll" placeholder="Ex : VXL-ABCDE">
         </div>
         <div class="field">
@@ -2364,6 +2364,10 @@ function addValidator(){
   const pollRef = document.getElementById('in-validator-poll').value.trim();
   const contact = document.getElementById('in-validator-contact').value.trim();
   if(!pollRef || !contact){ toast('Renseigne le code de l\'élection et le contact du validateur.'); return; }
+  if(/^VXID-/i.test(pollRef)){
+    toast('⚠️ Ceci est ton identifiant VoxID personnel, pas le code d\'une élection. Il te faut le code du sondage (format VXL-XXXXX), visible sur la carte de l\'élection concernée.');
+    return;
+  }
   const body = contact.includes('@') ? {email: contact} : {phone: contact};
   fetch(API_BASE + '/api/polls/' + encodeURIComponent(pollRef) + '/validators', {
     method: 'POST',
