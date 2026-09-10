@@ -505,6 +505,7 @@
   <a data-nav="accueil" class="active" onclick="go('accueil'); closeMenu();">🏠 Accueil</a>
   <a onclick="go('tendances'); closeMenu();">🔥 Tendances en direct</a>
   <a onclick="go('afrique'); closeMenu();">🌍 VoxLive Africa</a>
+  <a onclick="go('international'); closeMenu();">🌐 VoxLive International</a>
   <a onclick="go('medias'); closeMenu();">📡 Directs, vidéos & photos</a>
   <a onclick="go('events'); closeMenu();">🎤 Événements</a>
   <a onclick="go('business'); closeMenu();">💼 VoxLive Business</a>
@@ -798,6 +799,7 @@
     <a data-nav="accueil" class="active" onclick="go('accueil')">🏠 Accueil</a>
     <a onclick="go('tendances')">🔥 Tendances en direct</a>
     <a data-nav="afrique" onclick="go('afrique')">🌍 VoxLive Africa</a>
+    <a data-nav="international" onclick="go('international')">🌐 VoxLive International</a>
     <a onclick="go('medias')">📡 Directs, vidéos & photos</a>
     <a data-nav="events" onclick="go('events')">🎤 Événements</a>
     <a data-nav="business" onclick="go('business')">💼 VoxLive Business</a>
@@ -971,6 +973,20 @@
         <div class="africa-stat-row" id="africaStatRow"></div>
         <p id="africaSimNote" style="font-size:11px;color:#f0b429;margin:4px 0 10px;"></p>
         <div class="trend-grid wide" id="trending-grid-africa"></div>
+      </section>
+    </section>
+
+    <!-- ===== VUE VOXLIVE INTERNATIONAL ===== -->
+    <section class="view" id="view-international">
+      <section class="card">
+        <div class="trend-head"><h3>🌐 VOXLIVE INTERNATIONAL</h3></div>
+        <p style="font-size:12px;color:var(--muted);margin-bottom:14px;">Sélectionnez un continent, un pays puis une ville pour filtrer les sondages de la région.</p>
+        <div class="africa-map" id="continentTabs"></div>
+        <div class="africa-map" id="intlCountryTabs" style="margin-top:8px;"></div>
+        <div class="city-chips" id="intlCityChips"></div>
+        <div class="africa-stat-row" id="intlStatRow"></div>
+        <p id="intlSimNote" style="font-size:11px;color:#f0b429;margin:4px 0 10px;"></p>
+        <div class="trend-grid wide" id="trending-grid-international"></div>
       </section>
     </section>
 
@@ -1533,6 +1549,7 @@ function go(view){
   if(view === 'mes') renderMesSondages();
   if(view === 'medias') renderMediaFeed('media-feed-full');
   if(view === 'afrique') renderAfrica();
+  if(view === 'international') renderInternational();
   if(view === 'events') renderEvents();
   if(view === 'profil') renderDashboard();
   if(view === 'tarifs') renderPaymentGrid();
@@ -2041,6 +2058,92 @@ function renderAfrica(){
       <div class="rank">#${i+1}</div>
       <div class="q">${x.title}</div>
       <div class="n">${country.flag} estimation ${country.name}${selectedCity?' · '+selectedCity:''}</div>
+      <div class="bar-row"><span class="lab">POUR</span><div class="bar-track"><div class="bar-fill pour" style="width:${pc}%"></div></div><span class="pctv">${pc}%</span></div>
+      <div class="bar-row"><span class="lab">CONTRE</span><div class="bar-track"><div class="bar-fill contre" style="width:${cc}%"></div></div><span class="pctv">${cc}%</span></div>
+    </button>`;
+  }).join('');
+}
+
+/* =========================================================
+   VOXLIVE INTERNATIONAL — continent / pays / villes
+   ========================================================= */
+const internationalContinents = [
+  {code:'EU', flag:'🇪🇺', name:'Europe', countries:[
+    {code:'FR', flag:'🇫🇷', name:'France', cities:['Paris','Marseille','Lyon']},
+    {code:'GB', flag:'🇬🇧', name:'Royaume-Uni', cities:['Londres','Manchester']},
+    {code:'DE', flag:'🇩🇪', name:'Allemagne', cities:['Berlin','Munich']},
+    {code:'ES', flag:'🇪🇸', name:'Espagne', cities:['Madrid','Barcelone']},
+    {code:'IT', flag:'🇮🇹', name:'Italie', cities:['Rome','Milan']},
+    {code:'BE', flag:'🇧🇪', name:'Belgique', cities:['Bruxelles']},
+    {code:'CH', flag:'🇨🇭', name:'Suisse', cities:['Genève','Zurich']},
+    {code:'PT', flag:'🇵🇹', name:'Portugal', cities:['Lisbonne']},
+  ]},
+  {code:'AM', flag:'🌎', name:'Amérique', countries:[
+    {code:'US', flag:'🇺🇸', name:'États-Unis', cities:['New York','Los Angeles','Chicago']},
+    {code:'CA', flag:'🇨🇦', name:'Canada', cities:['Toronto','Montréal']},
+    {code:'BR', flag:'🇧🇷', name:'Brésil', cities:['São Paulo','Rio de Janeiro']},
+    {code:'MX', flag:'🇲🇽', name:'Mexique', cities:['Mexico']},
+    {code:'AR', flag:'🇦🇷', name:'Argentine', cities:['Buenos Aires']},
+  ]},
+  {code:'AS', flag:'🌏', name:'Asie', countries:[
+    {code:'CN', flag:'🇨🇳', name:'Chine', cities:['Pékin','Shanghai']},
+    {code:'JP', flag:'🇯🇵', name:'Japon', cities:['Tokyo','Osaka']},
+    {code:'IN', flag:'🇮🇳', name:'Inde', cities:['New Delhi','Mumbai']},
+    {code:'AE', flag:'🇦🇪', name:'Émirats arabes unis', cities:['Dubaï','Abou Dabi']},
+    {code:'SA', flag:'🇸🇦', name:'Arabie Saoudite', cities:['Riyad','Djeddah']},
+    {code:'LB', flag:'🇱🇧', name:'Liban', cities:['Beyrouth']},
+  ]},
+  {code:'AU', flag:'🌐', name:'Autres', countries:[
+    {code:'AUS', flag:'🇦🇺', name:'Australie', cities:['Sydney','Melbourne']},
+    {code:'MA', flag:'🇲🇦', name:'Maroc', cities:['Casablanca','Rabat']},
+    {code:'TN', flag:'🇹🇳', name:'Tunisie', cities:['Tunis']},
+  ]},
+];
+let selectedContinent = 'EU';
+let selectedIntlCountry = internationalContinents[0].countries[0].code;
+let selectedIntlCity = null;
+function setContinent(code){
+  selectedContinent = code;
+  const continent = internationalContinents.find(c=>c.code===code);
+  selectedIntlCountry = continent.countries[0].code;
+  selectedIntlCity = null;
+  renderInternational();
+}
+function setIntlCountry(code){ selectedIntlCountry = code; selectedIntlCity = null; renderInternational(); }
+function setIntlCity(city){ selectedIntlCity = city; renderInternational(); }
+function renderInternational(){
+  const continent = internationalContinents.find(c=>c.code===selectedContinent) || internationalContinents[0];
+  const country = continent.countries.find(c=>c.code===selectedIntlCountry) || continent.countries[0];
+
+  document.getElementById('continentTabs').innerHTML = internationalContinents.map(c=>
+    `<button class="flag-btn ${c.code===continent.code?'active':''}" onclick="setContinent('${c.code}')">${c.flag} ${c.name}</button>`
+  ).join('');
+  document.getElementById('intlCountryTabs').innerHTML = continent.countries.map(c=>
+    `<button class="flag-btn ${c.code===country.code?'active':''}" onclick="setIntlCountry('${c.code}')">${c.flag} ${c.name}</button>`
+  ).join('');
+  document.getElementById('intlCityChips').innerHTML =
+    `<button class="city-chip ${!selectedIntlCity?'active':''}" onclick="setIntlCity(null)">Toutes les villes</button>` +
+    country.cities.map(v=>`<button class="city-chip ${selectedIntlCity===v?'active':''}" onclick="setIntlCity('${v}')">${v}</button>`).join('');
+
+  const p = featured();
+  const allCountries = internationalContinents.flatMap(c=>c.countries);
+  const worldAvg = allCountries.reduce((s,c)=>s+countryPourPct(p,c.code),0) / allCountries.length;
+  const countryPct = countryPourPct(p, country.code);
+  document.getElementById('intlStatRow').innerHTML = `
+    <div class="as">🌐 Moyenne mondiale<b>${worldAvg.toFixed(0)}% favorable</b></div>
+    <div class="as">${country.flag} ${country.name}${selectedIntlCity?' · '+selectedIntlCity:''}<b>${countryPct.toFixed(0)}% favorable</b></div>
+    <div class="as">Sur le sondage<b style="font-size:12px;">${p.title}</b></div>
+  `;
+  const noteEl = document.getElementById('intlSimNote');
+  if(noteEl) noteEl.textContent = "⚠️ Estimation simulée à titre illustratif — aucune donnée réelle de vote par pays/ville n'est encore collectée.";
+  const el = document.getElementById('trending-grid-international');
+  const list = polls.filter(x=>x.hasPoll).sort((a,b)=>total(b)-total(a)).slice(0,6);
+  el.innerHTML = list.map((x,i)=>{
+    const pc = Math.round(countryPourPct(x, country.code)), cc = 100-pc;
+    return `<button class="tcard" onclick="selectPoll('${x.id}')">
+      <div class="rank">#${i+1}</div>
+      <div class="q">${x.title}</div>
+      <div class="n">${country.flag} estimation ${country.name}${selectedIntlCity?' · '+selectedIntlCity:''}</div>
       <div class="bar-row"><span class="lab">POUR</span><div class="bar-track"><div class="bar-fill pour" style="width:${pc}%"></div></div><span class="pctv">${pc}%</span></div>
       <div class="bar-row"><span class="lab">CONTRE</span><div class="bar-track"><div class="bar-fill contre" style="width:${cc}%"></div></div><span class="pctv">${cc}%</span></div>
     </button>`;
@@ -2844,6 +2947,7 @@ function renderAll(isTick){
   if(document.getElementById('view-mes').classList.contains('active')) renderMesSondages();
   if(document.getElementById('view-medias').classList.contains('active') && !(isTick && anyVideoPlaying('media-feed-full'))) renderMediaFeed('media-feed-full');
   if(document.getElementById('view-afrique').classList.contains('active')) renderAfrica();
+  if(document.getElementById('view-international').classList.contains('active')) renderInternational();
   if(document.getElementById('view-profil').classList.contains('active')) renderDashboard();
   renderTvMode();
 }
