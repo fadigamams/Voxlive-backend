@@ -1,12 +1,20 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 
 const authRoutes = require('./routes/auth');
 const pollsRoutes = require('./routes/polls');
 
 const app = express();
+
+// En-têtes de sécurité HTTP de base (anti-sniffing MIME, anti-clickjacking, cache
+// des pages sensibles désactivé, etc.). Le CSP par défaut de Helmet est désactivé
+// car voxlive.html utilise massivement des styles et onclick en ligne — l'activer
+// tel quel casserait l'affichage. À durcir plus tard si le frontend est réécrit
+// sans JS/CSS inline.
+app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
 
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
