@@ -633,6 +633,10 @@
           <option value="influenceur">⭐ Influenceur</option>
           <option value="tv">📺 Chaîne TV</option>
           <option value="entreprise">🏢 Entreprise</option>
+          <option value="parti_politique">🎗️ Parti politique</option>
+          <option value="organisation">🏛️ Organisation</option>
+          <option value="association">🤝 Association</option>
+          <option value="autre">📋 Autre</option>
         </select>
       </div>
       <div class="field">
@@ -1634,7 +1638,7 @@ let pendingMediaSrc = null;
 let pendingMediaKind = null;
 let pendingMediaMime = null;
 let pendingMediaName = null;
-const roleLabel = {particulier:'👤 Particulier', influenceur:'⭐ Influenceur', tv:'📺 Chaîne TV', entreprise:'🏢 Entreprise'};
+const roleLabel = {particulier:'👤 Particulier', influenceur:'⭐ Influenceur', tv:'📺 Chaîne TV', entreprise:'🏢 Entreprise', parti_politique:'🎗️ Parti politique', organisation:'🏛️ Organisation', association:'🤝 Association', autre:'📋 Autre'};
 
 function openModal(type){
   document.getElementById('modalOverlay').classList.add('open');
