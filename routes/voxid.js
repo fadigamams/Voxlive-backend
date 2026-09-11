@@ -1,10 +1,21 @@
 const express = require('express');
+const rateLimit = require('express-rate-limit');
 const crypto = require('crypto');
 const pool = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { autoVerify } = require('../voxid-auto-verify');
 
 const router = express.Router();
+
+// Limite les demandes de vérification d'identité : chaque appel lance un OCR coûteux en CPU,
+// et ça évite qu'un compte spamme des dizaines de tentatives pour tenter de tromper le système.
+const voxidSubmitLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 8,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Trop de demandes de vérification envoyées. Réessaie dans 15 minutes.' }
+});
 
 const MAX_PHOTO_BYTES = 2_000_000; // ~2 Mo en base64, cohérent avec la limite déjà utilisée pour le logo de compte
 
@@ -19,7 +30,7 @@ function hashPhoto(dataUrl) {
 }
 
 /* ---------- Soumettre une demande de vérification VoxID ---------- */
-router.post('/submit', requireAuth, async (req, res) => {
+router.post('/submit', voxidSubmitLimiter, requireAuth, async (req, res) => {
   try {
     const { fullName, documentPhotoDataUrl, pollId, deviceFingerprint, verificationType, membershipCardNumber } = req.body || {};
     const vType = verificationType === 'strict' ? 'strict' : 'open';

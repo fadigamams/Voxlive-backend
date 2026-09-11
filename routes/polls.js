@@ -1,8 +1,27 @@
 const express = require('express');
+const rateLimit = require('express-rate-limit');
 const pool = require('../db');
 const { requireAuth } = require('../middleware/auth');
 
 const router = express.Router();
+
+// Anti-bourrage de votes : max 10 votes par minute par IP (protège contre les bots/scripts
+// qui tenteraient de voter en boucle plus vite qu'un humain ne le peut réellement).
+const voteLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Trop de votes envoyés trop vite depuis cette connexion. Réessaie dans une minute.' }
+});
+// Anti-spam de création de sondages : max 5 créations par 10 minutes par IP.
+const createPollLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Trop de sondages créés en peu de temps. Réessaie dans quelques minutes.' }
+});
 
 function generateCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -73,7 +92,7 @@ const FREE_POLL_LIMIT = 2; // nombre de sondages réels gratuits par compte
 const FREE_MULTI_OPTION_LIMIT = 4; // nombre de candidats max en gratuit pour une élection multi
 const PAID_MULTI_OPTION_LIMIT = 20; // nombre de candidats max pour un compte payant (ex : concours Miss, élections à grand nombre de candidats)
 
-router.post('/', requireAuth, async (req, res) => {
+router.post('/', createPollLimiter, requireAuth, async (req, res) => {
   try {
     const { title, question, category, scope, pollType, options, securityLevel, verificationType, closesAt } = req.body || {};
     if (!title || !title.trim()) {
@@ -194,7 +213,7 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-router.post('/:id/vote', requireAuth, async (req, res) => {
+router.post('/:id/vote', voteLimiter, requireAuth, async (req, res) => {
   try {
     const { choice, optionId } = req.body || {};
 
