@@ -173,7 +173,7 @@ router.post('/', requireAuth, async (req, res) => {
 router.get('/', async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT id FROM polls WHERE status = 'active' ORDER BY created_at DESC LIMIT 50`
+      `SELECT id FROM polls WHERE status = 'active' AND (closes_at IS NULL OR closes_at > now()) ORDER BY created_at DESC LIMIT 50`
     );
     const polls = await Promise.all(rows.map(r => pollWithResults(r.id)));
     res.json({ polls: polls.filter(Boolean) });
@@ -458,5 +458,29 @@ router.delete('/:id/validators/:validatorId', requireAuth, async (req, res) => {
     res.status(500).json({ error: 'Erreur serveur, réessaie plus tard.' });
   }
 });
+
+/**
+ * Fermeture automatique en arrière-plan des sondages expirés.
+ * ---------------------------------------------------------------
+ * Avant : un sondage dont la date de fin était dépassée restait "actif" dans la liste
+ * tant que personne ne l'ouvrait individuellement (seul GET /polls/:id fermait le sondage
+ * consulté). Résultat : la liste /api/polls pouvait afficher des sondages expirés comme
+ * "LIVE", et chaque requête devait vérifier/re-fermer un sondage déjà terminé.
+ * Cette tâche tourne toutes les 5 minutes et ferme en une seule requête tous les sondages
+ * expirés d'un coup — la liste reste toujours à jour, sans dépendre d'une visite utilisateur.
+ */
+async function closeExpiredPolls() {
+  try {
+    const { rowCount } = await pool.query(
+      `UPDATE polls SET status = 'closed'
+       WHERE status = 'active' AND closes_at IS NOT NULL AND closes_at <= now()`
+    );
+    if (rowCount > 0) console.log(`[cron] ${rowCount} sondage(s) expiré(s) fermé(s) automatiquement.`);
+  } catch (err) {
+    console.error('Erreur fermeture automatique des sondages expirés :', err);
+  }
+}
+closeExpiredPolls(); // une fois immédiatement au démarrage du serveur
+setInterval(closeExpiredPolls, 5 * 60 * 1000); // puis toutes les 5 minutes
 
 module.exports = router;
