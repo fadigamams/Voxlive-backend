@@ -1338,6 +1338,23 @@ function pourPct(p){ const t=total(p); return t>0 ? p.pour/t*100 : 50; }
 function contrePct(p){ const t=total(p); return t>0 ? p.contre/t*100 : 50; }
 function fmt(n){ return Math.round(n).toLocaleString('fr-FR'); }
 /**
+ * Échappe le texte fourni par un utilisateur avant de l'insérer dans le HTML de la page.
+ * CRITIQUE POUR LA SÉCURITÉ : sans ça, un titre de sondage ou un nom de candidat contenant
+ * du HTML/JS (ex: <img src=x onerror=...>) s'exécuterait dans le navigateur de TOUS les
+ * utilisateurs qui voient ce sondage — vol de session possible (faille XSS stockée).
+ * TOUJOURS utiliser esc() autour de tout texte utilisateur inséré via innerHTML/template
+ * literal : titres, questions, noms de candidats, catégories, noms d'auteur, etc.
+ */
+function esc(str){
+  if(str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+/**
  * Nombre de votes réel d'un sondage, quel que soit son type (binaire pour/contre
  * ou multi-candidats) — total(p) seul renvoie toujours 0 pour un sondage multi.
  */
@@ -1354,7 +1371,7 @@ function pollMiniBarsHtml(p){
     return opts.map(o=>{
       const pct = t>0 ? Math.round((o.votes||0)/t*100) : 0;
       const photo = o.photo_url ? `<img src="${o.photo_url}" style="width:18px;height:18px;border-radius:4px;object-fit:cover;margin-right:5px;vertical-align:middle;">` : '';
-      return `<div class="bar-row"><span class="lab" style="display:flex;align-items:center;">${photo}${o.label}</span><div class="bar-track"><div class="bar-fill pour" style="width:${pct}%"></div></div><span class="pctv">${pct}%</span></div>`;
+      return `<div class="bar-row"><span class="lab" style="display:flex;align-items:center;">${photo}${esc(o.label)}</span><div class="bar-track"><div class="bar-fill pour" style="width:${pct}%"></div></div><span class="pctv">${pct}%</span></div>`;
     }).join('');
   }
   const pc = Math.round(pourPct(p)), cc = 100-pc;
@@ -2104,7 +2121,7 @@ function renderTvMode(){
     box.innerHTML = options.map(o => {
       const pct = totalVotes > 0 ? Math.round((Number(o.votes||0) / totalVotes) * 100) : 0;
       return `<div class="tv-bar-row">
-        <div class="tv-lab" style="color:#fff;">${o.label}</div>
+        <div class="tv-lab" style="color:#fff;">${esc(o.label)}</div>
         <div class="tv-track"><div class="tv-fill pour" style="width:${pct}%"></div></div>
         <div class="tv-pct">${pct}%</div>
       </div>`;
@@ -2187,7 +2204,7 @@ function renderAfrica(){
   document.getElementById('africaStatRow').innerHTML = `
     <div class="as">🌍 Moyenne Afrique<b>${africaAvg.toFixed(0)}% favorable</b></div>
     <div class="as">${country.flag} ${country.name}${selectedCity?' · '+selectedCity:''}<b>${countryPct.toFixed(0)}% favorable</b></div>
-    <div class="as">Sur le sondage<b style="font-size:12px;">${p.title}</b></div>
+    <div class="as">Sur le sondage<b style="font-size:12px;">${esc(p.title)}</b></div>
   `;
   const noteEl = document.getElementById('africaSimNote');
   if(noteEl) noteEl.textContent = "⚠️ Estimation simulée à titre illustratif — aucune donnée réelle de vote par pays/ville n'est encore collectée.";
@@ -2197,7 +2214,7 @@ function renderAfrica(){
     const pc = Math.round(countryPourPct(x, country.code)), cc = 100-pc;
     return `<button class="tcard" onclick="selectPoll('${x.id}')">
       <div class="rank">#${i+1}</div>
-      <div class="q">${x.title}</div>
+      <div class="q">${esc(x.title)}</div>
       <div class="n">${country.flag} estimation ${country.name}${selectedCity?' · '+selectedCity:''}</div>
       <div class="bar-row"><span class="lab">POUR</span><div class="bar-track"><div class="bar-fill pour" style="width:${pc}%"></div></div><span class="pctv">${pc}%</span></div>
       <div class="bar-row"><span class="lab">CONTRE</span><div class="bar-track"><div class="bar-fill contre" style="width:${cc}%"></div></div><span class="pctv">${cc}%</span></div>
@@ -2273,7 +2290,7 @@ function renderInternational(){
   document.getElementById('intlStatRow').innerHTML = `
     <div class="as">🌐 Moyenne mondiale<b>${worldAvg.toFixed(0)}% favorable</b></div>
     <div class="as">${country.flag} ${country.name}${selectedIntlCity?' · '+selectedIntlCity:''}<b>${countryPct.toFixed(0)}% favorable</b></div>
-    <div class="as">Sur le sondage<b style="font-size:12px;">${p.title}</b></div>
+    <div class="as">Sur le sondage<b style="font-size:12px;">${esc(p.title)}</b></div>
   `;
   const noteEl = document.getElementById('intlSimNote');
   if(noteEl) noteEl.textContent = "⚠️ Estimation simulée à titre illustratif — aucune donnée réelle de vote par pays/ville n'est encore collectée.";
@@ -2283,7 +2300,7 @@ function renderInternational(){
     const pc = Math.round(countryPourPct(x, country.code)), cc = 100-pc;
     return `<button class="tcard" onclick="selectPoll('${x.id}')">
       <div class="rank">#${i+1}</div>
-      <div class="q">${x.title}</div>
+      <div class="q">${esc(x.title)}</div>
       <div class="n">${country.flag} estimation ${country.name}${selectedIntlCity?' · '+selectedIntlCity:''}</div>
       <div class="bar-row"><span class="lab">POUR</span><div class="bar-track"><div class="bar-fill pour" style="width:${pc}%"></div></div><span class="pctv">${pc}%</span></div>
       <div class="bar-row"><span class="lab">CONTRE</span><div class="bar-track"><div class="bar-fill contre" style="width:${cc}%"></div></div><span class="pctv">${cc}%</span></div>
@@ -2313,7 +2330,12 @@ function createVoxEvent(){
   document.getElementById('in-cat').value = 'Concours';
   document.getElementById('in-poll-type').value = 'multi';
   onPollTypeChange();
-  toast(`Ajoute les candidats de "${name}" ci-dessous, puis clique sur "Créer le sondage" — ton QR Code sera généré juste après.`);
+  // Un événement réel (concours, élection...) doit être vérifié par défaut, sinon n'importe qui
+  // peut voter plusieurs fois en créant plusieurs comptes gratuits — l'organisateur peut repasser
+  // en "Populaire" manuellement s'il veut vraiment un sondage d'ambiance sans enjeu.
+  document.getElementById('in-security-level').value = 'sensible';
+  onSecurityLevelChange();
+  toast(`Ajoute les candidats de "${name}" ci-dessous. Vérification d'identité activée par défaut pour éviter les votes multiples — clique sur "Créer le sondage" une fois prêt.`);
   pendingEventQR = true;
   document.getElementById('grp-candidates').scrollIntoView({behavior:'smooth'});
 }
@@ -2324,7 +2346,7 @@ function showEventQR(p){
   document.getElementById('events-empty').style.display = 'none';
   el.insertAdjacentHTML('afterbegin', `<div class="event-card">
       <img class="event-qr" src="${qrUrl}" alt="QR ${p.code}">
-      <div style="font-weight:700;font-size:14px;">${p.title}</div>
+      <div style="font-weight:700;font-size:14px;">${esc(p.title)}</div>
       <div style="font-size:11.5px;color:var(--muted);">Sondage réel · code ${p.code}</div>
       <div class="event-code">${p.code}</div>
       <div style="font-size:10.5px;color:var(--muted);margin-top:4px;word-break:break-all;">${url}</div>
@@ -2407,7 +2429,7 @@ function renderDashboard(){
   const top = [...mine].sort((a,b)=>total(b)-total(a)).slice(0,5);
   document.getElementById('dash-top-table').innerHTML = top.map(p=>{
     const eng = Math.min(99, Math.round(total(p)/2000*100));
-    return `<tr onclick="selectPoll('${p.id}')" style="cursor:pointer;"><td>${p.title}</td><td>${fmt(total(p))}</td><td>${eng}%</td></tr>`;
+    return `<tr onclick="selectPoll('${p.id}')" style="cursor:pointer;"><td>${esc(p.title)}</td><td>${fmt(total(p))}</td><td>${eng}%</td></tr>`;
   }).join('');
 
   const score = Math.min(999, 500 + Math.min(300, mine.length*20) + Math.min(150, Object.keys(votedPolls).length*15) + Math.min(50, shareCount*10));
@@ -2428,7 +2450,7 @@ function analyzeWithAI(){
   const box = document.getElementById('insightBox');
   box.classList.add('show');
   box.innerHTML = `<div class="ihead">🤖 Résumé VoxLive AI</div>
-    Sur « ${p.title} », <b>${pp.toFixed(1).replace('.',',')}%</b> des ${fmt(total(p))} votants sont POUR et
+    Sur « ${esc(p.title)} », <b>${pp.toFixed(1).replace('.',',')}%</b> des ${fmt(total(p))} votants sont POUR et
     <b>${cp.toFixed(1).replace('.',',')}%</b> sont CONTRE. Le camp <b>${lead}</b> est actuellement en tête avec un écart de ${margin} points.
     <br><br>Cette analyse se limite strictement aux chiffres affichés sur ce tableau de bord — aucune donnée démographique ou historique
     supplémentaire n'est disponible sans authentification des votants.`;
@@ -2693,7 +2715,7 @@ function loadVoxidQueue(){
       <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">Élection : ${req.poll_title} (${req.poll_code}) — ${data.queue.length} en attente</div>
       ${dupWarning}
       <img src="${req.document_photo_url}" style="width:100%;max-height:260px;object-fit:contain;border-radius:10px;background:#0a1120;margin-bottom:10px;">
-      <div style="font-weight:700;font-size:16px;margin-bottom:12px;">${req.full_name_submitted}</div>
+      <div style="font-weight:700;font-size:16px;margin-bottom:12px;">${esc(req.full_name_submitted)}</div>
       <div style="display:flex;gap:10px;">
         <button class="btn btn-outline" style="flex:1;background:#3b1010;border-color:#7f1d1d;" onclick="decideVoxid('${req.id}','rejected')">❌ Rejeter</button>
         <button class="btn btn-green" style="flex:1;" onclick="decideVoxid('${req.id}','approved')">✅ Valider</button>
@@ -2737,13 +2759,13 @@ function renderTrendGrid(elId, full){
       return inTitle || inCandidates;
     });
   }
-  if(list.length === 0){ el.innerHTML = `<div class="empty-note">${q ? 'Aucun résultat pour « '+searchEl.value.trim()+' ».' : 'Aucun sondage dans cette catégorie pour le moment.'}</div>`; return; }
+  if(list.length === 0){ el.innerHTML = `<div class="empty-note">${q ? 'Aucun résultat pour « '+esc(searchEl.value.trim())+' ».' : 'Aucun sondage dans cette catégorie pour le moment.'}</div>`; return; }
   el.innerHTML = list.map((p,i)=>{
     const isLive = p.id === featuredId;
-    const badge = p.author ? ` · ${roleLabel[p.author.role]||''} ${p.author.name}` : '';
+    const badge = p.author ? ` · ${roleLabel[p.author.role]||''} ${esc(p.author.name)}` : '';
     return `<button class="tcard ${isLive?'is-live':''}" onclick="selectPoll('${p.id}')">
       <div class="rank">${isLive ? '● LIVE' : '#'+(i+1)}</div>
-      <div class="q">${p.title}</div>
+      <div class="q">${esc(p.title)}</div>
       <div class="n">${fmt(pollVoteCount(p))} votants${badge}</div>
       ${pollMiniBarsHtml(p)}
     </button>`;
@@ -2756,8 +2778,8 @@ function renderMesSondages(){
   el.innerHTML = mine.map(p=>{
     return `<button class="tcard ${p.id===featuredId?'is-live':''}" onclick="selectPoll('${p.id}')">
       <div class="rank">${p.id===featuredId?'● LIVE':'●'}</div>
-      <div class="q">${p.title}</div>
-      <div class="n">${fmt(pollVoteCount(p))} votants · ${p.cat}</div>
+      <div class="q">${esc(p.title)}</div>
+      <div class="n">${fmt(pollVoteCount(p))} votants · ${esc(p.cat)}</div>
       ${pollMiniBarsHtml(p)}
     </button>`;
   }).join('');
@@ -2801,7 +2823,7 @@ function renderMediaFeed(elId, limit){
         </div>
       </div>
       ${mediaHtml}
-      <div class="qtitle" style="margin-top:10px;">${p.title}</div>
+      <div class="qtitle" style="margin-top:10px;">${esc(p.title)}</div>
       ${pollHtml}
     </div>`;
   }).join('');
@@ -2989,7 +3011,7 @@ function renderFeaturedMulti(p){
     resultsEl.innerHTML = `<div style="font-size:11px;color:var(--muted);margin-bottom:8px;">🏆 RÉSULTATS FINAUX · ${fmt(p.totalVotes)} votes exprimés</div>` +
       winnerLine +
       options.map(o => `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--card-border);">
-        <span style="display:flex;align-items:center;">${o.photo_url ? `<img src="${o.photo_url}" style="width:28px;height:28px;border-radius:6px;object-fit:cover;margin-right:8px;">` : ''}${medals[o.rank-1] || '#'+o.rank} ${o.label}</span>
+        <span style="display:flex;align-items:center;">${o.photo_url ? `<img src="${o.photo_url}" style="width:28px;height:28px;border-radius:6px;object-fit:cover;margin-right:8px;">` : ''}${medals[o.rank-1] || '#'+o.rank} ${esc(o.label)}</span>
         <b>${fmt(o.votes)} (${o.percent}%)</b>
       </div>`).join('');
   } else {
@@ -2998,7 +3020,7 @@ function renderFeaturedMulti(p){
     listEl.innerHTML = options.map(o => {
       const chosen = votedPolls[p.id] === o.id;
       const photo = o.photo_url ? `<img src="${o.photo_url}" style="width:32px;height:32px;border-radius:6px;object-fit:cover;margin-right:8px;vertical-align:middle;">` : '';
-      return `<button class="vote-btn" style="background:${chosen?'var(--green)':'#1a2540'};border:1px solid ${chosen?'var(--green)':'#334155'};color:#fff;margin-bottom:8px;display:flex;align-items:center;" ${already?'disabled':''} onclick="voteOnOption('${p.id}','${o.id}')">${photo}<span>${o.label}${o.votes!=null && already ? ' — '+fmt(o.votes)+' votes' : ''}</span></button>`;
+      return `<button class="vote-btn" style="background:${chosen?'var(--green)':'#1a2540'};border:1px solid ${chosen?'var(--green)':'#334155'};color:#fff;margin-bottom:8px;display:flex;align-items:center;" ${already?'disabled':''} onclick="voteOnOption('${p.id}','${o.id}')">${photo}<span>${esc(o.label)}${o.votes!=null && already ? ' — '+fmt(o.votes)+' votes' : ''}</span></button>`;
     }).join('');
     flagEl.innerHTML = votedFlagHtml();
     flagEl.classList.toggle('show', already);
@@ -3013,7 +3035,7 @@ function renderFeaturedMulti(p){
         <div style="font-size:11px;color:var(--muted);margin:10px 0 6px;">📊 CLASSEMENT EN DIRECT · ${fmt(p.totalVotes)} votes</div>
         <div style="font-weight:700;margin-bottom:8px;">${leaderTied ? '🤝 Égalité en tête' : '🏆 En tête : ' + leader.label + ' (' + leader.percent + '%)'}</div>
         ${sorted.map(o => `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--card-border);font-size:13px;">
-          <span>#${o.rank} ${o.label}</span><b>${o.percent}%</b>
+          <span>#${o.rank} ${esc(o.label)}</span><b>${o.percent}%</b>
         </div>`).join('')}`;
     } else {
       liveEl.style.display = 'none';
