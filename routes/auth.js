@@ -5,7 +5,7 @@ const pool = require('../db');
 const { requireAuth } = require('../middleware/auth');
 
 const router = express.Router();
-const ALLOWED_ROLES = ['particulier', 'influenceur', 'tv', 'entreprise'];
+const ALLOWED_ROLES = ['particulier', 'influenceur', 'tv', 'entreprise', 'parti_politique', 'organisation', 'association', 'autre'];
 
 function signToken(user) {
   return jwt.sign(

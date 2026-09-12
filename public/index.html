@@ -1420,7 +1420,7 @@ function apiPollToLocal(ap){
   return {
     id: ap.id, code: ap.code, title: ap.title, cat: ap.category, scope: ap.scope,
     pour: Number(ap.pour_count) || 0, contre: Number(ap.contre_count) || 0,
-    createdByUser: !!(currentUser && ap.user_id === currentUser.id),
+    createdByUser: !!(currentUser && String(ap.user_id) === String(currentUser.id)),
     createdAt: ap.created_at ? new Date(ap.created_at).getTime() : Date.now(),
     hasPoll: true, isMediaPost: false, postType: 'sondage', media: null, caption: '',
     author: {name: ap.author_name, role: ap.author_role, logo: ap.author_logo || null},
